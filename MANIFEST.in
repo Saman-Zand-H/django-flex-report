@@ -1,0 +1,12 @@
+include report/templates/report/base.html
+include report/templates/report/column_list.html
+include report/templates/report/column_form.html
+include report/templates/report/scripts.html
+include report/templates/report/template_create_complete.html
+include report/templates/report/template_create.html
+include report/templates/report/template_form.html
+include report/templates/report/tempalte_list.html
+include report/templates/report/tempalte_upsert_base.html
+include report/templates/report/test_table_page.html
+include report/templates/report/view_page.html
+include report/templates/report/view.html
