@@ -1,0 +1,12 @@
+{% extends 'report/base.html' %}
+{% load static i18n %}
+
+{% block content %}
+    <h3>{% trans 'New Template' %}</h3>
+    <div></div>
+    <form method="post">
+        {% csrf_token %}
+        {{ form }}
+        <button type="submit">{% trans 'Save' %}</button>
+    </form>
+{% endblock %}

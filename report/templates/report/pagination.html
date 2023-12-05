@@ -1,0 +1,50 @@
+{% load report_filters %}
+<nav class="d-flex justify-content-between align-items-center">
+    <ul class="pagination d-flex align-items-center m-0">
+        {% with "last_page" as page_icon %}
+            {% if paginator.num_pages > 1 and qs.number != 1 %}
+                {% include "report/pagination_item.html" with link_attributes=link_attributes scroll_tag=scroll_tag page=1 page_icon=page_icon %}
+            {% else %}
+                {% include "report/pagination_item.html" with link_attributes=link_attributes scroll_tag=scroll_tag page="" page_icon=page_icon %}
+            {% endif %}
+        {% endwith %}
+        {% with "chevron_right" as page_icon %}
+            {% if qs.has_previous %}
+                {% include "report/pagination_item.html" with link_attributes=link_attributes scroll_tag=scroll_tag page=qs.previous_page_number page_icon=page_icon %}
+            {% else %}
+                {% include "report/pagination_item.html" with link_attributes=link_attributes scroll_tag=scroll_tag page="" page_icon=page_icon %}
+            {% endif %}
+        {% endwith %}
+        {% for i in qs.number|get_centered_range:paginator.num_pages %}
+            {% if qs.number == i %}
+                {% include "report/pagination_item.html" with link_attributes=link_attributes scroll_tag=scroll_tag page=i page_title=i active="1" %}
+            {% else %}
+                {% include "report/pagination_item.html" with link_attributes=link_attributes scroll_tag=scroll_tag page=i page_title=i %}
+            {% endif %}
+        {% endfor %}
+        {% with "chevron_left" as page_icon %}
+            {% if qs.has_next %}
+                {% include "report/pagination_item.html" with link_attributes=link_attributes scroll_tag=scroll_tag page=qs.next_page_number page_icon=page_icon %}
+            {% else %}
+                {% include "report/pagination_item.html" with link_attributes=link_attributes scroll_tag=scroll_tag page="" page_icon=page_icon %}
+            {% endif %}
+        {% endwith %}
+        {% with "first_page" as page_icon %}
+            {% if paginator.num_pages > 1 and paginator.num_pages != qs.number %}
+                {% include "report/pagination_item.html" with link_attributes=link_attributes scroll_tag=scroll_tag page=paginator.num_pages page_icon=page_icon %}
+            {% else %}
+                {% include "report/pagination_item.html" with link_attributes=link_attributes scroll_tag=scroll_tag page="" page_icon=page_icon %}
+            {% endif %}
+        {% endwith %}
+    </ul>
+    <span>صفحهٔ {{ qs.number }} از {{ paginator.num_pages }}</span>
+    <div class="d-flex flex-row align-items-center gap-2">
+        <label for="select-per-page">تعداد در صفحه</label>
+        <select {{ link_attributes }} hx-on="change: htmx.ajax('GET', this.value)" hx-push-url="true" class="form-select" style="width: fit-content" name="requests_in_page" id="select-per-page">
+            {% for i in pages %}
+                <option {% if paginator.per_page == i %}selected{% endif %}
+                        value="?{% dynamic_query_transform 'pagination' page=1 per_page=i %}">{{ i }}</option>
+            {% endfor %}
+        </select>
+    </div>
+</nav>

@@ -1,0 +1,170 @@
+{% load report_filters i18n partials %}
+
+{% startpartial report_view %}
+<div id="report-view">
+    {% if report.searchable_fields %}
+        <form hx-target="#report-view"
+              hx-boost="true"
+              hx-indicator="#page-loading"
+              hx-select="#report-view"
+              hx-swap="outerHTML"
+            {% if realtime_quicksearch %}
+              hx-trigger="keyup changed delay:700ms from:input[name=search]"
+            {% endif %}
+        >
+              <div>
+                  {{ report.quicksearch.form.search }}
+                  <button type="submit">
+                      <i class="material-icons-outlined">search</i>
+                    </button>
+                </div>
+                {% for k, v in report.initials.items %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+            <span>
+                {% trans 'Searchable Fields' %}:
+                {% with report.searchable_fields.values|join:', ' as field_name %}
+                    {{ report.template.model.model_class|get_verbose_name:field_name }}
+                {% endwith %}
+            </span>
+        </form>
+    {% endif %}
+    <div>
+        {% if report.have_template %}
+            {% if report.filters %}
+                <div class="modal modal-blur fade" id="advanced-search" tabindex="-1">
+                    <div class="modal-dialog modal-lg" role="document">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">{% trans 'Advanced Search' %}</h5>
+                                <button type="button"
+                                        class="btn-close"
+                                        data-bs-dismiss="modal"
+                                        aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <form id="advanced-search-form"
+                                    hx-get="."
+                                    hx-target="#report-view"
+                                    hx-trigger="submit"
+                                    hx-push-url="true"
+                                    hx-indicator="#page-loading"
+                                    hx-select="#report-view"
+                                    hx-swap="outerHTML">
+                                    {% for k, v in report.initials.items %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+                                    {{ report.filters.form }}
+                                </form>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn me-auto" data-bs-dismiss="modal">{% trans 'exit' %}</button>
+                                <button onclick="htmx.trigger('#advanced-search-form', 'submit')"
+                                        data-bs-dismiss="modal"
+                                        class="btn btn-facebook">{% trans 'search' %}</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+            <div style="display: flex;
+                        justify-content: space-between;
+                        align-items: center">
+                {% if report.templates and report.templates.count > 1 %}
+                    <div>
+                        {% for template in report.templates %}
+                            <a class="button {% if report.template.pk == template.pk %}active{% endif %}"
+                               hx-get="?{% dynamic_query_transform 'report' page_template=template.pk %}"
+                               hx-select="#report-view"
+                               hx-target="#report-view"
+                               hx-indicator="#page-loading">
+                                {{ template.title }}
+                                {% if template.is_page_default %}({% trans 'default' %}){% endif %}
+                            </a>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+                <div>
+                    {% if report.template.has_export %}
+                        {% for format in report.export_formats %}
+                            <a href="{% url 'report:export' pk=report.template.pk %}?format={{ format.slug }}">
+                                {% trans 'download' %}
+                                {{ format.name }}
+                            </a>
+                        {% endfor %}
+                    {% endif %}
+                    <button type="button"
+                            data-bs-toggle="modal"
+                            data-bs-target="#advanced-search">{% trans 'advanced search' %}</button>
+                    {% if report.used_filters %}
+                        <a hx-get="."
+                        hx-target="#report-view"
+                        hx-select="#report-view"
+                        hx-push-url="true"
+                        hx-indicator="#page-loading">{% trans 'clear filters' %}</a>
+                    {% endif %}
+                    {% if not report.is_page_table and user|is_editor %}
+                        <a href="{% url 'report:template:edit' pk=report.template.pk %}">{% trans 'edit template' %}</a>
+                    {% endif %}
+                </div>
+            </div>
+            {% if report.used_filters %}
+                <div>
+                    <small>
+                        <h5>{% trans 'results for' %}</h5>
+                        <p>«{{ report.used_filters }}»</p>
+                    </small>
+                </div>
+            {% endif %}
+            <div id="report-view-top">
+                <div>
+                    <table>
+                        <thead>
+                            <th scope="col">#</th>
+                            {% for _, column in report.columns.items %}
+                                <th scope="col">{{ report.template.model.model_class|get_verbose_name:column }}</th>
+                            {% endfor %}
+                            {% if report.template.buttons.exists %}
+                                <th scope="col">
+                                    <div>{% trans 'Actions' %}</div>
+                                </th>
+                            {% endif %}
+                        </thead>
+                        <tbody>
+                            {% for record in report.pagination.qs %}
+                                <tr>
+                                    <th scope="row">{{ forloop.counter0|add:report.pagination.qs.start_index }}</th>
+                                    {% for column in report.columns.values %}<td>{{ record|get_row_value:column }}</td>{% endfor %}
+                                    {% if report.template.buttons.exists %}
+                                        <td>
+                                            <div x-data>
+                                                {% for button in report.buttons %}
+                                                    {% if button|has_report_access:user %}
+                                                        <a {% if button.url %} {{ template_settings.a_navigation_htmx }} href="{% get_report_button_url record button %}"{% endif %} @click="$dispatch('{{ button.event }}', {% get_report_button_fields record button %})" class="btn btn-sm {{ button.color }}" {% if button.display_name %} data-bs-container="body" data-bs-toggle="popover" data-bs-placement="top" data-bs-trigger="hover" data-bs-content="{{ button.display_name }}" {% endif %}>
+                                                            {% if button.icon %}<i class="material-icons-outlined">{{ button.icon }}</i>{% endif %}
+                                                        </a>
+                                                    {% endif %}
+                                                {% endfor %}
+                                            </div>
+                                        </td>
+                                    {% endif %}
+                                </tr>
+                            {% empty %}
+                                <tr>
+                                    <td colspan="{{ report.columns_count }}">{% trans 'No data has been submitted.' %}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="{{ report.columns_count }}">
+                                    {% show_pagination report.pagination scroll_tag="#report-view-top" link_attributes="hx-select='#report-view' hx-target='#report-view' hx-indicator='#page-loading'" %}
+                                </td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        {% else %}
+            <div>{% trans 'No template has been set for this page.' %}</div>
+        {% endif %}
+    </div>
+</div>
+{% endpartial %}
+{% partial report_view %}

@@ -1,0 +1,39 @@
+{% extends 'report/template_upsert_base.html' %}
+{% load i18n %}
+
+{% block content %}
+<h3>
+    {% blocktrans with title=object.title %}Editing {{ title }}{% endblocktrans %}
+</h3>
+<form method="post" novalidate>
+    {% csrf_token %}
+    <h4>{% trans 'Basic Setup' %}</h4>
+    <div>
+        {% for field in filter.form %}
+            {% if field.name in meta_fields_name %}
+                <div>
+                    {{ field.label }}
+                    {{ field }}
+                </div>
+            {% endif %}
+        {% endfor %}
+    </div>
+        
+        <h4>{% trans 'Filters' %}</h4>
+        <div>
+            {% for field in filter.form %}
+                {% if not field.name in meta_fields_name %}
+                    <div>
+                        {{ field.label }}
+                        {{ field }}
+                        {% if field.help_text %}
+                            <p>{{ field.help_text|safe }}</p>
+                        {% endif %}
+                    </div>
+                {% endif %}
+            {% endfor %}
+        </div>
+        
+    <button type="submit">{% trans 'Edit' %}</button>
+</form>
+{% endblock %}

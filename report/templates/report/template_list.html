@@ -1,0 +1,128 @@
+{% extends 'report/base.html' %}
+{% load report_filters i18n %}
+
+{% block content %}
+<div>
+    <a href="{% url 'report:template:create' %}">{% trans 'Create Template' %}</a>
+</div>
+
+<div>
+    <table>
+        <thead>
+            <tr>
+                <th>
+                    #
+                </th>
+                <th>
+                    {% trans 'Name' %}
+                </th>
+                <th>
+                    {% trans 'Model' %}
+                </th>
+                <th>
+                    {% trans 'Creator' %}
+                </th>
+                <th>
+                    {% trans 'Status' %}
+                </th>
+                <th>
+                    {% trans 'Page' %}
+                </th>
+                <th>
+                    {% trans 'Create At' %}
+                </th>
+                <th>
+                    {% trans 'Updated At' %}
+                </th>
+                <th>
+                    {% trans 'Columns Count' %}
+                </th>
+                <th>
+                    {% trans 'Filters Count' %}
+                </th>
+                <th>
+                    {% trans 'Manage' %}
+                </th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for object in object_list %}
+            <tr>
+                <th scope="row">
+                    {{ forloop.counter }}
+                </th>
+                <td>
+                    {{ object.title }}
+                </td>
+                <td>
+                    {{ object.model }}
+                </td>
+                <td>
+                    {{ object.user_fullname }}
+                </td>
+                <td>
+                    {{ object.get_status_display }}
+                </td>
+                <td>
+                    {{ object.page.title }}
+                </td>
+                <td>
+                    {{ object.created_date|date:"Y-n-j H:i" }}
+                </td>
+                <td>
+                    {{ object.modified_date|date:"Y-n-j H:i" }}
+                </td>
+                <td>
+                    {{ object.columns_count }}
+                </td>
+                <td>
+                    {{ object.filters_count }}
+                </td>
+                <td>
+                    <div>
+                        {% if object.is_completed %}
+                            <a href="{% url 'report:view' object.pk %}" title="{% trans 'view report' %}">
+                                <i class="material-icons-outlined">visibility</i>
+                            </a>
+                            
+                            {% if user|is_editor %}
+                                {% if object.page %}
+                                    <a href="{% url 'report:template:toggle-default' object.pk %}">
+                                        <i class="material-icons-outlined">star{% if not object.is_page_default %}_border{% endif %}</i>
+                                    </a>
+                                {% endif %}
+
+                                <a href="{% url 'report:template:edit' object.pk %}" title="{% trans 'edit' %}">
+                                    <i class="material-icons-outlined">edit</i>
+                                </a>
+                                <a href="{% url 'report:template:clone' object.pk %}" title="{% trans 'clone' %}">
+                                    <i class="material-icons-outlined">content_copy</i>
+                                </a>
+                            {% endif %}
+
+                        {% else %}
+                            {% if user|is_editor %}
+                                <a href="{% url 'report:template:create_complete' object.pk %}"
+                                    title="{% trans 'complete' %}">
+                                    <i class="material-icons-outlined">done</i>
+                                </a>
+                            {% endif %}
+                        {% endif %}
+
+                        {% if user|is_editor %}
+                            <form method="post" action="{% url 'report:template:delete' object.pk %}">
+                                {% csrf_token %}
+                                <button type="submit" title="{% trans 'delete' %}">
+                                    <i class="material-icons-outlined">delete</i>
+                                </button>
+                            </form>
+                        {% endif %}
+
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

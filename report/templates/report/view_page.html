@@ -1,0 +1,10 @@
+{% extends "report/base.html" %}
+{% load report_filters i18n %}
+
+{% block title %}
+    {% blocktrans with title=report.template.title %}Template {{ title }}{% endblocktrans %}
+{% endblock %}
+
+{% block content %}
+    {% show_page_report %}
+{% endblock content %}

@@ -1,0 +1,18 @@
+{% extends 'report/template_upsert_base.html' %}
+{% load i18n %}
+
+{% block title %}
+    {% if object %}
+        {% blocktrans with title=object.title %}Column {{ title }}{% endblocktrans %}
+    {% else %}
+        {% trans 'Column Form' %}
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+    <form method="post">
+        {% csrf_token %}
+        {{ form }}
+        <button type="submit">{% trans 'Submit' %}</button>
+    </form>
+{% endblock %}

@@ -1,0 +1,6 @@
+{% load report_filters%}
+    <a {{ link_attributes }} href="?{% dynamic_query_transform 'pagination' page=page %}" hx-boost="true" class="{% if active %}active{% endif %} page-link cursor-pointer" hx-swap="outerHTML{% if scroll_tag %} show:{{ scroll_tag }}:top{% endif %} ">
+        {% if page_icon %}<i class="material-icons-outlined">{{ page_icon }}</i>{% endif %}
+        {% if page_title %}{{ page_title }}{% endif %}
+    </a>
+    
