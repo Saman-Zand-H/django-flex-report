@@ -18,6 +18,7 @@ class Migration(migrations.Migration):
                 expression=django.db.models.lookups.Exact(
                     models.F("status"), models.Value("c")
                 ),
+                output_field=models.BooleanField(),
             ),
         ),
     ]
