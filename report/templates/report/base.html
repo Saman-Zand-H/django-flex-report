@@ -1,4 +1,4 @@
-{% load i18n %}
+{% load i18n static %}
 
 <!DOCTYPE html>
 <html lang="en">
@@ -9,6 +9,8 @@
         href="https://fonts.googleapis.com/css?family=Material+Icons|Material+Icons+Outlined|Material+Icons+Two+Tone|Material+Icons+Round|Material+Icons+Sharp&amp;display=swap"
         rel="stylesheet"
     >
+    <script src="{% static 'libs/jquery/jquery.min.js' %}"></script>
+    <script src="{% static 'libs/jquery-ui/jquery-ui.min.js' %}"></script>
     <style>
         table, th, td {
             border: 1px solid black;
@@ -19,6 +21,7 @@
 </head>
 <body>
     {% block content %}{% endblock %}
+
     {% block js %}{% endblock %}
 </body>
 </html>

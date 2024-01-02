@@ -1,4 +1,33 @@
-from .utils import get_setting, import_callable
+import importlib
+
+from django.conf import settings
+from django.db import models
+from django_jalali.db import models as jmodels
+
+
+def import_attribute(path):
+    assert isinstance(path, str)
+    pkg, attr = path.rsplit(".", 1)
+    ret = getattr(importlib.import_module(pkg), attr)
+    return ret
+
+
+def import_callable(path_or_callable):
+    if not hasattr(path_or_callable, "__call__"):
+        ret = import_attribute(path_or_callable)
+    else:
+        ret = path_or_callable
+    return ret
+
+
+def get_setting(name, dflt):
+    getter = getattr(
+        settings,
+        "REPORT_SETTING_GETTER",
+        lambda name, dflt: getattr(settings, name, dflt),
+    )
+    getter = import_callable(getter)
+    return getter(name, dflt)
 
 
 class AppSettings(object):
@@ -29,8 +58,47 @@ class AppSettings(object):
         return import_callable(base_view) if base_view else None
 
     @property
+    def DEFAULT_CELL_VALUE(self):
+        return self._settings("DEFAULT_CELL_VALUE", "&mdash;")
+
+    @property
     def EDITORS_GROUP_NAME(self):
         return self._settings("EDITORS_GROUP_NAME", "report_editors")
+
+    @property
+    def TIME_FORMATS(self):
+        dflt = time_formats = {
+            models.DateTimeField: "%H:%M %Y/%m/%d",
+            models.DateField: "%Y/%m/%d",
+            models.TimeField: "%H:%M:%S",
+            jmodels.jDateField: "%H:%M:%S",
+            jmodels.jDateTimeField: "%H:%M %Y/%m/%d",
+        }
+
+        if FORMATS := self._settings("TIME_FORMATS", False):
+            assert isinstance(FORMATS, dict)
+            time_formats = {k: FORMATS.get(k, v) for k, v in dflt.items()}
+
+        return time_formats
+
+    @property
+    def DATA_TAGS(self):
+        dflt = data_tags = {
+            models.FileField: lambda v: f'<img src="{v}" height=100>',
+            models.ImageField: lambda v: f'<img src="{v}" height=100>',
+            models.BooleanField: lambda v: f'<div class="form-check"><input class="form-check-input" type="checkbox" disabled {"checked" if v else ""}></div>',
+            "default": lambda v: f"<span>{v}</span>",
+        }
+
+        if DATA_TAGS := self._settings("DATA_TAGS", False):
+            assert isinstance(DATA_TAGS, dict)
+            data_tags = {k: DATA_TAGS.get(k, v) for k, v in dflt.items()}
+
+        return data_tags
+    
+    @property
+    def MODEL_USER_PATH_FUNC_NAME(self):
+        return self._settings("MODEL_USER_PATH_FUNC_NAME", "report_user_path")
 
     @property
     def VIEWS(self):

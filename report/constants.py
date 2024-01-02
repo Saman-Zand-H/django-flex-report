@@ -3,7 +3,6 @@ from abc import abstractmethod
 
 import django_filters
 import xlwt
-from django.db import models
 
 from .fields import FieldFileAbsoluteURL
 
@@ -12,12 +11,6 @@ REPORT_FIELDS_KEY = "report_search_fields"
 REPORT_EXCULDE_KEY = "report_search_exclude"
 REPORT_COLUMNS_EXCULDE_KEY = "report_columns_exclude"
 REPORT_CUSTOM_FIELDS_KEY = "report_custom_fields"
-
-REPORT_DATETIME_FORMATS = {
-    models.DateTimeField: "%Y/%m/%d %H:%M:%S",
-    models.DateField: "%Y/%m/%d",
-    models.TimeField: "%H:%M:%S",
-}
 
 REPORT_CELL_STYLE_MAP = (
     (datetime.datetime, xlwt.easyxf(num_format_str="YYYY/MM/DD HH:MM")),
@@ -35,14 +28,6 @@ FILTERSET_DATE_FILTERS = [
     django_filters.TimeFilter,
     django_filters.DateTimeFilter,
 ]
-
-REPORT_TEMPLATE_HTML_TAGS = {
-    models.FileField: lambda v: f'<img src="{v}" height=100>',
-    models.ImageField: lambda v: f'<img src="{v}" height=100>',
-    models.BooleanField: lambda v: f'<div class="form-check"><input class="form-check-input" type="checkbox" disabled {"checked" if v else ""}></div>',
-    "default": lambda v: f"<span>{v}</span>",
-}
-
 
 class ReportModel:
     models = []

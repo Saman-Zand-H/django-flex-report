@@ -33,10 +33,10 @@ from phonenumber_field.phonenumber import PhoneNumber
 from report import BaseExportFormat, ReportModel, export_format
 from report.fields import FieldFileAbsoluteURL
 
+from .app_settings import app_settings
 from .constants import (
     REPORT_CELL_STYLE_MAP,
     REPORT_CUSTOM_FIELDS_KEY,
-    REPORT_DATETIME_FORMATS,
     REPORT_EXCULDE_KEY,
     REPORT_FIELDS_KEY,
     FieldTypes,
@@ -55,12 +55,7 @@ def encode_str_dict(d: dict):
 
 
 def tokenize_kwargs(string: str):
-    return dict(
-        [
-            (i[0], i[1].strip('"').strip("'"))
-            for i in map(lambda i: i.split("="), string.split('" '))
-        ]
-    )
+    return dict([(i[0], i[1].strip('"').strip("'")) for i in map(lambda i: i.split("="), string.split('" '))])
 
 
 def increment_string_suffix(string):
@@ -100,13 +95,9 @@ def get_urlpatterns(app_name: str) -> List[str]:
     url_names = []
     urlpatterns, root_namespace = urls_module.urlpatterns, urls_module.app_name
 
-    def get_nested_urlpatterns(
-        patterns: list | URLResolver, namespace: str = root_namespace
-    ):
+    def get_nested_urlpatterns(patterns: list | URLResolver, namespace: str = root_namespace):
         if isinstance(patterns, URLResolver):
-            nested_patterns = get_nested_urlpatterns(
-                patterns.url_patterns, f"{root_namespace}:{patterns.namespace}"
-            )
+            nested_patterns = get_nested_urlpatterns(patterns.url_patterns, f"{root_namespace}:{patterns.namespace}")
         else:
             nested_patterns = [f"{namespace}:{i.name}" for i in patterns]
         return nested_patterns
@@ -131,9 +122,7 @@ def get_project_urls():
         if isinstance(l, URLPattern):
             yield patterns + [str(l.pattern)], namespaces + [l.name], l.callback
         elif isinstance(l, URLResolver):
-            yield from getter(
-                l.url_patterns, patterns + [str(l.pattern)], namespaces + [l.namespace]
-            )
+            yield from getter(l.url_patterns, patterns + [str(l.pattern)], namespaces + [l.namespace])
         yield from getter(urls[1:], patterns, namespaces)
 
     for pattern in getter(get_resolver().url_patterns):
@@ -158,31 +147,6 @@ def get_model_method_result(model, key):
     and checks if its returned value is a populated list, and returns it.
     """
     return (callable((method := getattr(model, key, None))) and method()) or []
-
-
-def import_attribute(path):
-    assert isinstance(path, str)
-    pkg, attr = path.rsplit(".", 1)
-    ret = getattr(importlib.import_module(pkg), attr)
-    return ret
-
-
-def import_callable(path_or_callable):
-    if not hasattr(path_or_callable, "__call__"):
-        ret = import_attribute(path_or_callable)
-    else:
-        ret = path_or_callable
-    return ret
-
-
-def get_setting(name, dflt):
-    getter = getattr(
-        settings,
-        "REPORT_SETTING_GETTER",
-        lambda name, dflt: getattr(settings, name, dflt),
-    )
-    getter = import_callable(getter)
-    return getter(name, dflt)
 
 
 def get_all_subclasses(class_):
@@ -214,19 +178,12 @@ def fields_to_field_name(fields_lookups):
     and returns a dict where the keys are the name of fields
     and the values are the list of lookup expressions.
     """
-    return {
-        f if isinstance(f, str) else get_field_name(f): l
-        for f, l in fields_lookups.items()
-    }
+    return {f if isinstance(f, str) else get_field_name(f): l for f, l in fields_lookups.items()}
 
 
 def field_to_db_field(model, field):
     """Takes a model and a field name, and returns the field object of that field name."""
-    return (
-        get_model_field(model, field)
-        if isinstance(field, str)
-        else (getattr(field, "field", None) or field)
-    )
+    return get_model_field(model, field) if isinstance(field, str) else (getattr(field, "field", None) or field)
 
 
 def get_model_fields(model, *, as_filter=False, fields_key, excludes_key):
@@ -287,11 +244,7 @@ def get_model_columns(model, db_only=False):
     from report.models import Column
 
     model_content_type = ContentType.objects.get_for_model(model)
-    columns = (
-        Column.objects.select_related("model")
-        .filter(model=model_content_type)
-        .values_list("title", "id")
-    )
+    columns = Column.objects.select_related("model").filter(model=model_content_type).values_list("title", "id")
     if db_only:
         columns = columns.filter(searchable=True)
     return {col_id: title for title, col_id in columns.values_list("title", "id")}
@@ -380,9 +333,7 @@ class ObjectEncoder(json.JSONEncoder):
             return obj.pk
         elif isinstance(obj, models.QuerySet):
             return list(obj)
-        elif isinstance(
-            obj, (datetime.datetime, datetime.date, jdatetime.datetime, jdatetime.date)
-        ):
+        elif isinstance(obj, (datetime.datetime, datetime.date, jdatetime.datetime, jdatetime.date)):
             return obj.isoformat()
         elif isinstance(obj, Money):
             return float(obj.amount)
@@ -406,11 +357,7 @@ def clean_request_data(data, filterset):
     filters_name = data_keys & set(filterset.get_filters())
     filters = {name: data.get(name) for name in filters_name}
     other = {k for k in data_keys if not k.startswith("csrf")} - filters_name
-    return json.loads(
-        json.dumps(
-            dict(filters=filters, **{o: data[o] for o in other}), cls=ObjectEncoder
-        )
-    )
+    return json.loads(json.dumps(dict(filters=filters, **{o: data[o] for o in other}), cls=ObjectEncoder))
 
 
 def generate_filterset_form(model, *, form_classes=None, fields=None):
@@ -447,12 +394,9 @@ def get_column_cell(obj, name, *, absolute_url=True):
     if (
         (custom_field_part := name.split("."))
         and len(custom_field_part) > 1
-        and get_column_type(model, (custom_field_function_name := custom_field_part[0]))
-        == FieldTypes.custom
+        and get_column_type(model, (custom_field_function_name := custom_field_part[0])) == FieldTypes.custom
     ):
-        custom_field_value = get_model_custom_field_value(
-            model, custom_field_function_name
-        )[custom_field_part[1]]
+        custom_field_value = get_model_custom_field_value(model, custom_field_function_name)[custom_field_part[1]]
         custom_field_function = getattr(obj, custom_field_function_name)
         return custom_field_function(custom_field_value[0])
 
@@ -460,15 +404,14 @@ def get_column_cell(obj, name, *, absolute_url=True):
         return name(obj, name)
 
     attr = nested_getattr(obj, name, None, sep="__")
+    if isinstance(attr, bool):
+        return attr
 
     if field := get_model_field(model, name):
-        if (
-            isinstance(attr, datetime.datetime)
-            and type(field) in REPORT_DATETIME_FORMATS
-        ):
-            attr = jdatetime.datetime.fromgregorian(datetime=attr).strftime(
-                REPORT_DATETIME_FORMATS[type(field)]
-            )
+        if isinstance(attr, datetime.datetime) and type(field) in app_settings.TIME_FORMATS:
+            attr = jdatetime.datetime.fromgregorian(datetime=attr).strftime(app_settings.TIME_FORMATS[type(field)])
+        elif isinstance(attr, jdatetime.datetime) and type(field) in app_settings.TIME_FORMATS:
+            attr = attr.strftime(app_settings.TIME_FORMATS[type(field)])
         elif getattr(field, "one_to_many") or getattr(field, "many_to_many"):
             attr = ", ".join(map(str, methodcaller("all")(attrgetter(name)(obj))))
         elif field.choices:
@@ -477,7 +420,8 @@ def get_column_cell(obj, name, *, absolute_url=True):
             attr = str(attrgetter(name)(obj))
         elif isinstance(field, models.FileField):
             attr = FieldFileAbsoluteURL(file=attr, absolute=absolute_url)
-    return str(attr)
+
+    return (attr and str(attr)) or app_settings.DEFAULT_CELL_VALUE
 
 
 def increment_string_suffix(string):
@@ -527,8 +471,7 @@ class ExportXls(BaseExportFormat):
         workbook = xlwt.Workbook(encoding="utf-8")
         default_style = xlwt.XFStyle()
         sheet = workbook.add_sheet(
-            sheet_name
-            or str(nested_getattr(queryset, "model._meta.verbose_name_plural", "sheet"))
+            sheet_name or str(nested_getattr(queryset, "model._meta.verbose_name_plural", "sheet"))
         )
 
         for num, column in enumerate(columns):
@@ -593,9 +536,7 @@ class ExportCsv(BaseExportFormat):
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow([headers.get(column, column) for column in columns])
-        writer.writerows(
-            [[get_column_cell(obj, column) for column in columns] for obj in queryset]
-        )
+        writer.writerows([[get_column_cell(obj, column) for column in columns] for obj in queryset])
         return output
 
     @classmethod
@@ -658,9 +599,7 @@ def set_template_as_page_default(template):
     from .models import Template
 
     if template.page:
-        Template.objects.filter(page=template.page).exclude(id=template.pk).update(
-            is_page_default=False
-        )
+        Template.objects.filter(page=template.page).exclude(id=template.pk).update(is_page_default=False)
         Template.objects.filter(id=template.pk).update(is_page_default=True)
 
 
@@ -694,9 +633,7 @@ def get_model_property(model, field_name):
 
 def get_field_name(field):
     """Get the name attribute of the field. If nested fields are passed, get the name property of the nested field."""
-    return getattr(field, "name", None) or reduce(
-        lambda o, a: getattr(o, a, None), [field, "field", "name"]
-    )
+    return getattr(field, "name", None) or reduce(lambda o, a: getattr(o, a, None), [field, "field", "name"])
 
 
 def is_field_valid(model, field, *, as_filter=False):

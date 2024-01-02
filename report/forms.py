@@ -4,15 +4,21 @@ from django.contrib.auth.models import Group
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ImproperlyConfigured
 from django.utils.translation import gettext as _
+from djangoformsetjs.utils import formset_media_js
 
-from .app_settings import app_settings
+from .app_settings import app_settings, import_callable
 from .choices import TemplateTypeChoices
-from .utils import (
-    generate_filterset_form,
-    get_model_columns,
-    get_report_models,
-    import_callable,
-)
+from .utils import generate_filterset_form, get_model_columns, get_report_models
+
+
+class ModelUserPathForm(forms.Form):
+    title = forms.CharField(label=_("Title"), max_length=100)
+    
+    class Media:
+        js = formset_media_js
+        
+
+model_user_path_formset = forms.formset_factory(ModelUserPathForm, extra=1, max_num=20, can_delete=True)
 
 
 class OrderedModelMultipleChoiceField(forms.MultipleChoiceField):

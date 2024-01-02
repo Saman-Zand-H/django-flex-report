@@ -1,10 +1,10 @@
 import contextlib
-from typing import Any
+from operator import call
 
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import FieldError, PermissionDenied
 from django.db.models import Q
-from django.http import Http404, HttpResponseForbidden
+from django.http import Http404
 from django.shortcuts import redirect
 from django.urls import reverse, reverse_lazy
 from django.views import View
@@ -15,7 +15,12 @@ from django.views.generic.list import ListView
 from .app_settings import app_settings
 from .choices import TemplateTypeChoices
 from .filterset import generate_filterset_from_model
-from .forms import generate_column_create_form, generate_report_create_form, generate_template_create_form
+from .forms import (
+    generate_column_create_form,
+    generate_report_create_form,
+    generate_template_create_form,
+    model_user_path_formset,
+)
 from .mixins import QuerySetExportMixin, TablePageMixin, TemplateObjectMixin
 from .models import Column, Template
 from .utils import clean_request_data, get_report_filename, increment_string_suffix, set_template_as_page_default
@@ -187,9 +192,7 @@ class TemplateUpsertViewBase(BaseView, TemplateObjectMixin, DetailView):
         super().setup(request, *args, **kwargs)
         self.object = self.get_object()
         self.template_model = model = self.object.model.model_class()
-        self.filter_class = generate_filterset_from_model(
-            model, self.get_form_classes()
-        )
+        self.filter_class = generate_filterset_from_model(model, self.get_form_classes())
         self.filter = self.filter_class(self.get_initial())
         self.columns = self.template_object.columns.all()
 
@@ -205,10 +208,7 @@ class TemplateUpsertViewBase(BaseView, TemplateObjectMixin, DetailView):
 
         def clean(self):
             cleaned_data = old_clean(self)
-            if (
-                hasattr(self, "instance")
-                and cleaned_data.get("page") != self.instance.page
-            ):
+            if hasattr(self, "instance") and cleaned_data.get("page") != self.instance.page:
                 self.instance.is_page_default = False
             return cleaned_data
 
@@ -217,12 +217,29 @@ class TemplateUpsertViewBase(BaseView, TemplateObjectMixin, DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        context["object"] = self.object
+        context["model_user_path"] = model_user_path_formset()
         context["filter"] = self.filter
         return context
+
+    def filter_model_user_path(self, model_user_path):
+        val = self.request.user
+        if hasattr(self.object.model, app_settings.MODEL_USER_PATH_FUNC_NAME):
+            val = call(getattr(self.object.model, app_settings.MODEL_USER_PATH_FUNC_NAME), {"request": self.request})
+
+        try:
+            self.object.model.model_class().objects.filter(**{model_user_path: val})
+            self.object.model_user_path = model_user_path
+        except FieldError:
+            pass
 
     def form_valid(self, form):
         cleaned_form = super().form_valid(form)
         data = clean_request_data(form.cleaned_data, self.filter_class)
+        model_user_path_forms = model_user_path_formset(data=self.request.POST)
+        if model_user_path_forms.is_valid():
+            model_user_path = "__".join([i.cleaned_data.get("title", "") for i in model_user_path_forms])
+            self.filter_model_user_path(model_user_path)
         self.object.filters = data["filters"]
 
         self.template_object.columns.clear()
@@ -235,12 +252,9 @@ class TemplateUpsertViewBase(BaseView, TemplateObjectMixin, DetailView):
 
 class TemplateCreateCompleteView(FormView, TemplateUpsertViewBase):
     template_name_suffix = "_create_complete"
-    
+
     def get_context_data(self, **kwargs):
-        return {
-            "meta_fields_name": ["columns", "users", "groups"],
-            **super().get_context_data(**kwargs)
-        }
+        return {"meta_fields_name": ["columns", "users", "groups"], **super().get_context_data(**kwargs)}
 
     def get_form_classes(self):
         return [generate_report_create_form(self.template_model)]

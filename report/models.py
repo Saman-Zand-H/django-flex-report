@@ -194,6 +194,7 @@ class Template(models.Model):
         limit_choices_to={"model": F("model")},
     )
     has_export = models.BooleanField(default=True, verbose_name=_("Has Export"))
+    model_user_path = models.CharField(max_length=200, verbose_name=_("Model User Path"), blank=True, null=True)
     creator = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

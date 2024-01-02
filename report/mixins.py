@@ -1,8 +1,9 @@
 import ast
 import mimetypes
+from operator import call
 from logging import getLogger
 
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import FieldError, PermissionDenied
 from django.core.paginator import EmptyPage, Paginator
 from django.http import HttpResponseBadRequest, HttpResponseForbidden
 from django.shortcuts import HttpResponse, redirect
@@ -12,10 +13,7 @@ from django.views.generic import View
 from report import export_format
 
 from .app_settings import app_settings
-from .filterset import (
-    generate_filterset_from_model,
-    generate_quicksearch_filterset_from_model,
-)
+from .filterset import generate_filterset_from_model, generate_quicksearch_filterset_from_model
 from .models import Template
 from .utils import generate_filterset_form, get_template_columns
 
@@ -33,8 +31,7 @@ class PaginationMixin(View):
         page = self.request.GET.get(self.page_keyword, 1)
         per_page = (
             p
-            if (p := self.request.GET.get(self.per_page_ketyword, self.default_page))
-            and p in map(str, self.pages)
+            if (p := self.request.GET.get(self.per_page_ketyword, self.default_page)) and p in map(str, self.pages)
             else self.default_page
         )
         try:
@@ -124,8 +121,7 @@ class QuerySetExportMixin(View):
 
     def dispatch(self, *args, **kwargs):
         if not self.export_format and (
-            not (format_ := self.request.GET.get("format", "").lower())
-            or format_ not in self.valid_file_exports
+            not (format_ := self.request.GET.get("format", "").lower()) or format_ not in self.valid_file_exports
         ):
             return HttpResponseBadRequest()
         self.export_format = self.export_format or format_
@@ -173,14 +169,9 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
 
     def get_template(self):
         page_template = self.request.GET.get(self.page_template_keyword)
-        if page_template and (
-            template := self.get_page_templates().filter(pk=page_template)
-        ):
+        if page_template and (template := self.get_page_templates().filter(pk=page_template)):
             return template.first()
-        template = (
-            self.get_page_templates().filter(is_page_default=True)
-            or self.get_page_templates()
-        )
+        template = self.get_page_templates().filter(is_page_default=True) or self.get_page_templates()
         return template.first()
 
     def setup(self, request, *args, **kwargs):
@@ -202,24 +193,24 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
             model, [*self.template_searchable_fields.values()]
         )(self.get_initials())
 
-        self.report_qs = (
-            self.quicksearch.qs.distinct() & self.filters.qs.distinct()
-        ).order_by("pk")
+        self.report_qs = (self.quicksearch.qs.distinct() & self.filters.qs.distinct()).order_by("pk")
+        if self.template_object.model_user_path:
+            try:
+                val = self.request.user
+                if hasattr(model, app_settings.MODEL_USER_PATH_FUNC_NAME):
+                    val = call(getattr(model, app_settings.MODEL_USER_PATH_FUNC_NAME), request=self.request)
+
+                self.report_qs = self.report_qs.filter(**{self.template_object.model_user_path: val})
+            except FieldError:
+                pass
 
         if self.filters.is_valid() and self.quicksearch.is_valid():
-            cleaned_data = (
-                self.quicksearch.form.cleaned_data | self.filters.form.cleaned_data
-            )
-            self.used_filters = self.get_used_filters(
-                {k: v for k, v in cleaned_data.items() if bool(v)}
-            )
+            cleaned_data = self.quicksearch.form.cleaned_data | self.filters.form.cleaned_data
+            self.used_filters = self.get_used_filters({k: v for k, v in cleaned_data.items() if bool(v)})
 
     def get_used_filters(self, cleaned_data):
         return _(" and ").join(
-            [
-                f'{k} = {",".join(map(str, v)) if isinstance(v, list) else v}'
-                for k, v in cleaned_data.items()
-            ]
+            [f'{k} = {",".join(map(str, v)) if isinstance(v, list) else v}' for k, v in cleaned_data.items()]
         )
 
     def get_initial_value(self, initial):
@@ -230,11 +221,7 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
         return initial
 
     def get_initials(self):
-        return {
-            k: self.get_initial_value(v)
-            for k, v in self.request.GET.dict().items()
-            if bool(v)
-        }
+        return {k: self.get_initial_value(v) for k, v in self.request.GET.dict().items() if bool(v)}
 
     def get_form_classes(self):
         if not (obj := self.template_object):
@@ -252,9 +239,7 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
 
         context["report"] = {
             "columns": self.template_columns,
-            "columns_count": len(self.template_columns)
-            + self.template_object.buttons.count()
-            + 1,
+            "columns_count": len(self.template_columns) + self.template_object.buttons.count() + 1,
             "filters": self.filters,
             "buttons": self.template_object.buttons.all(),
             "searchable_fields": self.template_searchable_fields,
@@ -268,16 +253,13 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
             "is_page_table": self.is_page_table,
             "have_template": self.have_template,
             "export_formats": [
-                {"name": format_.format_name, "slug": format_.format_slug}
-                for format_ in export_format.formats.values()
+                {"name": format_.format_name, "slug": format_.format_slug} for format_ in export_format.formats.values()
             ],
-            "page_title": getattr(
-                self.template_object.page, "title", self.template_object.title
-            ),
+            "page_title": getattr(self.template_object.page, "title", self.template_object.title),
         }
         return context
 
     def get_page_templates(self):
-        return Template.objects.filter(
-            page__url_name=self.request.resolver_match.view_name
-        ).order_by("-is_page_default")
+        return Template.objects.filter(page__url_name=self.request.resolver_match.view_name).order_by(
+            "-is_page_default"
+        )

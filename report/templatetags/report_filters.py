@@ -6,15 +6,15 @@ from urllib.parse import urlencode
 
 from django import template
 from django.contrib.auth.models import Group
+from django.contrib.contenttypes.models import ContentType
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
-from django.db.models import Q
+from django.db.models import Model, Q, QuerySet
 from django.urls import reverse
 from django.urls.exceptions import NoReverseMatch
 from django.utils.safestring import mark_safe
 
-from report.app_settings import app_settings
-from report.constants import REPORT_TEMPLATE_HTML_TAGS
+from report.app_settings import AppSettings, app_settings
 from report.utils import get_column_cell, get_model_field
 
 from ..utils import field_to_db_field, get_model_field
@@ -28,9 +28,7 @@ def enum(iterable: Iterable):
 
 
 @register.inclusion_tag("report/pagination.html", takes_context=True)
-def show_pagination(
-    context, pagination_context=None, *, link_attributes=None, scroll_tag=None
-):
+def show_pagination(context, pagination_context=None, *, link_attributes=None, scroll_tag=None):
     return {
         "request": context["request"],
         "link_attributes": link_attributes,
@@ -59,6 +57,26 @@ def has_report_access(user, obj):
         | Q(groups__in=user.groups.all())
         | (Q(groups__isnull=True) & Q(users__isnull=True))
     )
+
+
+@register.filter
+def get_verbose_name(obj, plural=False):
+    assert hasattr(obj, "_meta") or isinstance(obj, QuerySet)
+    if isinstance(obj, Model):
+        meta = obj._meta
+
+    elif isinstance(obj, QuerySet):
+        meta = obj.model._meta
+
+    else:
+        meta = obj._meta.model._meta
+
+    return (meta.verbose_name_plural if plural else meta.verbose_name).title()
+
+
+@register.filter
+def dict_get(dictionary, key):
+    return dictionary.get(key)
 
 
 @register.filter
@@ -103,23 +121,20 @@ def is_row_value_valid(f, v):
 
 
 @register.filter
-def get_verbose_name(obj, column):
-    return mark_safe(
-        getattr(
-            field_to_db_field(obj, column), "verbose_name", column.replace("_", " ")
-        )
-    )
+def get_column_verbose_name(obj, column):
+    return mark_safe(getattr(field_to_db_field(obj, column), "verbose_name", column.replace("_", " ")))
 
 
 @register.filter
 def get_row_value(obj, column):
     field = get_model_field(obj, column)
     value = get_column_cell(obj, column, absolute_url=False)
-    tag = REPORT_TEMPLATE_HTML_TAGS.get(
+
+    tag = app_settings.DATA_TAGS.get(
         type(field),
-        REPORT_TEMPLATE_HTML_TAGS["default"],
+        app_settings.DATA_TAGS["default"],
     )
-    return mark_safe(tag(value) if is_row_value_valid(field, value) else "")
+    return mark_safe(tag(value) if is_row_value_valid(field, value) else "&mdash;")
 
 
 @register.inclusion_tag("report/view.html", takes_context=True)
@@ -138,6 +153,13 @@ def get_report_button_fields(record, button):
 @register.simple_tag
 def get_report_button_url(record, button):
     url_kwargs = {k: getattr(record, v, v) for k, v in button.url_kwargs.items()}
+
+    with contextlib.suppress(NoReverseMatch):
+        return reverse(
+            button.url_name,
+            kwargs=url_kwargs | {"ct_pk": ContentType.objects.get_for_model(record._meta.model).pk},
+        )
+
     with contextlib.suppress(NoReverseMatch):
         return reverse(
             button.url_name,
