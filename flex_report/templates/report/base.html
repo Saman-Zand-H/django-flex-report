@@ -1,0 +1,27 @@
+{% load i18n static %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link
+        href="https://fonts.googleapis.com/css?family=Material+Icons|Material+Icons+Outlined|Material+Icons+Two+Tone|Material+Icons+Round|Material+Icons+Sharp&amp;display=swap"
+        rel="stylesheet"
+    >
+    <script src="{% static 'libs/jquery/jquery.min.js' %}"></script>
+    <script src="{% static 'libs/jquery-ui/jquery-ui.min.js' %}"></script>
+    <style>
+        table, th, td {
+            border: 1px solid black;
+        }
+    </style>
+    {% block css %}{% endblock %}
+    <title>{% trans 'Document' %}</title>
+</head>
+<body>
+    {% block content %}{% endblock %}
+
+    {% block js %}{% endblock %}
+</body>
+</html>

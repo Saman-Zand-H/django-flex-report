@@ -1,0 +1,78 @@
+{% extends 'flex_report/template_upsert_base.html' %}
+{% load i18n formset_tags %}
+
+{% block content %}
+<h3>
+    {% blocktrans with title=object.title %}Editing {{ title }}{% endblocktrans %}
+</h3>
+<form method="post" novalidate>
+    {% csrf_token %}
+    <h4>{% trans 'Basic Setup' %}</h4>
+    <div>
+        {% for field in filter.form %}
+            {% if field.name in meta_fields_name %}
+                <div>
+                    {{ field.label }}
+                    {{ field }}
+                </div>
+            {% endif %}
+        {% endfor %}
+    </div>
+
+    <div style="margin: 2rem 0">
+        <div> {{ object.model }} → </div>
+        <div
+            id="model-user-path-formset"
+            data-formset-prefix="{{ model_user_path.prefix }}"
+        > {{ model_user_path.management_form }} <div data-formset-body> {% for form in model_user_path %} <div
+                    data-formset-form
+                > {{ form }} <button
+                        type="button"
+                        data-formset-delete-button
+                    >Delete form</button>
+                </div> {% endfor %} </div>
+            <script
+                type="form-template"
+                data-formset-empty-form
+            >
+                        {% escapescript %}
+                            <div data-formset-form>
+                                {{ model_user_path.empty_form }}
+                                <button type="button" data-formset-delete-button>Delete form</button>
+                            </div>
+                        {% endescapescript %}
+                    </script>
+            <input
+                type="button"
+                value="Add another"
+                data-formset-add
+            >
+            <script>
+                jQuery(function ($) {
+                    $("#model-user-path-formset").formset({
+                        animateForms: true
+                    });
+                });
+            </script>
+        </div>
+        <div> → User </div>
+    </div>
+        
+        <h4>{% trans 'Filters' %}</h4>
+        <div>
+            {% for field in filter.form %}
+                {% if not field.name in meta_fields_name %}
+                    <div>
+                        {{ field.label }}
+                        {{ field }}
+                        {% if field.help_text %}
+                            <p>{{ field.help_text|safe }}</p>
+                        {% endif %}
+                    </div>
+                {% endif %}
+            {% endfor %}
+        </div>
+        
+    <button type="submit">{% trans 'Edit' %}</button>
+</form>
+{% endblock %}

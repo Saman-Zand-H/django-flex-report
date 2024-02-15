@@ -1,13 +1,13 @@
 [build-system]
-requires = ["setuptools>=61.2"]
+requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "django-flex-reports"
+name = "django-flex-report"
 dynamic = ["version", "dependencies"]
 authors = [{name = "Saman Zand Haghighi", email = "samanzandh@gmail.com"}]
 license = {text = "MIT"}
-description = "A django package that makes reporting easier."
+description = "A Django app to create flexible reports"
 readme = "README.md"
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -42,7 +42,7 @@ include-package-data = true
 exclude = ["conf*"]
 
 [tool.setuptools.dynamic]
-version = {attr = "report.__version__"}
+version = {attr = "flex_report.__version__"}
 dependencies = {file = ["requirements.txt"]}
 
 [tool.mypy]

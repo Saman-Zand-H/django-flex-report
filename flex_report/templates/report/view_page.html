@@ -1,0 +1,10 @@
+{% extends "flex_report/base.html" %}
+{% load flex_report_filters i18n %}
+
+{% block title %}
+    {% blocktrans with title=report.template.title %}Template {{ title }}{% endblocktrans %}
+{% endblock %}
+
+{% block content %}
+    {% show_page_report %}
+{% endblock content %}
