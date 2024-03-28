@@ -114,7 +114,7 @@ def generate_quicksearch_filterset_from_model(model, fields=[], form_classes=Non
 def generate_filterset_from_model(model, form_classes=None):
     if form_classes is None:
         form_classes = []
-        
+
     return type(
         f"{getattr(model, '__name__', '')}DynamicFilterSet",
         (app_settings.FILTERSET_CLASS,),

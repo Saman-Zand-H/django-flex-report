@@ -14,10 +14,8 @@ from django.urls import reverse
 from django.urls.exceptions import NoReverseMatch
 from django.utils.safestring import mark_safe
 
-from flex_report.app_settings import AppSettings, app_settings
-from flex_report.utils import get_column_cell, get_model_field
-
-from ..utils import field_to_db_field, get_model_field
+from flex_report.app_settings import app_settings
+from flex_report.utils import get_column_cell, get_model_field, field_to_db_field
 
 register = template.Library()
 
@@ -124,6 +122,10 @@ def is_row_value_valid(f, v):
 
 @register.filter
 def get_column_verbose_name(obj, column):
+    lookup_exprs = list(map(lambda i: f"__{i}", ["in"]))
+    for lookup in filter(lambda i: column.endswith(i), lookup_exprs):
+        column = column.rstrip(lookup)
+                        
     field_col = getattr(field_to_db_field(obj, column), "verbose_name", False)
     if (
         getattr(obj, column, False)
@@ -131,6 +133,7 @@ def get_column_verbose_name(obj, column):
         and (property_col := getattr(getattr(obj, column), "fget", False))
     ):
         field_col = getattr(property_col, "verbose_name", False)
+    
     return mark_safe(field_col or column.replace("_", " ").title())
 
 
@@ -187,4 +190,4 @@ def get_report_button_url(record, button):
 
     url += f"?{urlencode({k: getattr(record, v, v) for k, v in button.query_strings.items()})}"
 
-    return url or "#"
+    return url.strip("?") or "#"

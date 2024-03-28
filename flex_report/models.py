@@ -94,22 +94,20 @@ class Column(models.Model):
         unique_together = [("model", "title")]
 
 
-class TableButton(models.Model):
-    class ColorChoices(models.TextChoices):
-        green = "btn-green", _("Success")
-        azure = "btn-azure", _("Azure")
-        blue = "btn-blue", _("Primary")
-        pink = "btn-pink", _("Pink")
-        purple = "btn-purple", _("Purple")
-        red = "btn-red", _("Danger")
-        orange = "btn-orange", _("Orange")
-        yellow = "btn-yellow", _("Warning")
-        lime = "btn-lime", _("Lime")
-        teal = "btn-teal", _("Teal")
-        cyan = "btn-cyan", _("Cyan")
-        gray = "btn-vk", _("Secondary")
-        dark = "btn-github", _("Dark")
+class TableButtonColor(models.Model):
+    title = models.CharField(
+        verbose_name=_("title"),
+        max_length=50,
+        default="",
+        unique=True,
+    )
+    color = models.CharField(max_length=50, verbose_name=_("Color"))
 
+    def __str__(self):
+        return f"{self.title} - {self.color}"
+
+
+class TableButton(models.Model):
     title = models.CharField(
         verbose_name=_("title"),
         max_length=50,
@@ -156,8 +154,11 @@ class TableButton(models.Model):
         default=dict,
         blank=True,
     )
-    color = models.CharField(
-        max_length=50, verbose_name=_("Color"), choices=ColorChoices.choices
+    color = models.ForeignKey(
+        TableButtonColor,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="buttons",
     )
     users = models.ManyToManyField(
         settings.AUTH_USER_MODEL,
@@ -186,7 +187,7 @@ class TableButton(models.Model):
 
     def __str__(self):
         return (
-            f"{self.title} - {self.get_color_display()} -> "
+            f"{self.title} - {self.color.title} -> "
             f"{self.url_name or truncatechars(self.event, 15)}"
         )
 

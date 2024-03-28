@@ -1,11 +1,10 @@
 import ast
-import contextlib
-from operator import attrgetter
 import mimetypes
-from operator import call
+from operator import call, ne, methodcaller
+from functools import partial
 from logging import getLogger
 
-from django.core.exceptions import FieldError, PermissionDenied
+from django.core.exceptions import PermissionDenied
 from django.db.models import Subquery
 from django.core.paginator import EmptyPage, Paginator
 from django.http import HttpResponseBadRequest, HttpResponseForbidden
@@ -22,7 +21,12 @@ from .filterset import (
     generate_quicksearch_filterset_from_model,
 )
 from .models import Template
-from .utils import generate_filterset_form, get_template_columns, get_choice_field_choices
+from .utils import (
+    generate_filterset_form,
+    get_template_columns,
+    get_choice_field_choices,
+    string_to_q,
+)
 
 logger = getLogger(__file__)
 
@@ -190,89 +194,128 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
             or self.get_page_templates()
         )
         return template.first()
-    
-    def apply_filters(self):
+
+    def get_filters(self):
         initials = self.get_initials()
-        
+
         self.template_filters = generate_filterset_from_model(
-            self.model, self.get_form_classes()
+            self.report_model, self.get_form_classes()
         )(self.template_object.filters or {})
         self.filters = generate_filterset_from_model(
-            self.model,
+            self.report_model,
             self.get_form_classes(),
         )(initials)
         self.quicksearch = generate_quicksearch_filterset_from_model(
-            self.model, list(self.template_searchable_fields.values())
+            self.report_model, list(self.template_searchable_fields.values())
         )(initials)
-    
-    def apply_user_path(self, model):
-        paths = self.template_object.model_user_path or {}
-        
-        for path_name, path in paths.items():
-            with contextlib.suppress(FieldError):
-                val = False
-                if (
-                    method_name := getattr(
-                        model, app_settings.MODEL_USER_PATH_FUNC_NAME
-                    ),
-                    False,
-                ):
-                    assert callable(method_name), f"{method_name} is not callable"
-                    
-                    val = call(
-                        method_name,
-                        request=self.request,
-                    )
-                    
-                if not val:
-                    continue
 
-                self.report_qs = self.report_qs.filter(
-                    **{path: (val or {}).get(path_name)}
-                ).order_by(*model._meta.ordering or ["pk"])
-                
-    def used_filter_format(self, col_name, val):
+    def apply_user_path(self):
+        LOGICAL_OPERATORS = ["()", "&", "|", "!="]
+        paths = self.template_object.model_user_path or {}
+        path_func = getattr(
+            self.report_model, app_settings.MODEL_USER_PATH_FUNC_NAME, lambda request: {}
+        )
+
+        accessed_paths = {
+            path_name: path_dict
+            for path_name, path in paths.items()
+            if (
+                path_dict := {
+                    path: call(path_func, request=self.request).get(path_name)
+                }
+            ).get(path)
+        }
+
+        if not len(accessed_paths):
+            return
+
+        accessed_path = (
+            list(accessed_paths.keys())[0]
+            if len(accessed_paths) == 1
+            else list(filter(partial(ne, "__all__"), accessed_paths))[0]
+        )
+        if accessed_path == "__all__":
+            return
+
+        accessed_path, accessed_val = accessed_paths[accessed_path].popitem()
+        if not any(map(lambda op: op in accessed_path, LOGICAL_OPERATORS)):
+            self.report_qs = self.report_qs.filter(
+                **{accessed_path: accessed_val}
+            )
+            return
+
+        self.report_qs = self.report_qs.filter(
+            string_to_q(accessed_path, accessed_val)
+        )
+        
+    def _format_used_filter(self, col_name, val):
         formats = {
             **{k: "بله" for k in ["true", "True", True]},
             **{k: "خیر" for k in ["false", "False", False]},
         }
-        if (formatted_val := formats.get(val, False)):
+        
+        if formatted_val := formats.get(val, False):
             return formatted_val
-        
-        if (choices := get_choice_field_choices(self.model, col_name)):
+
+        if choices := get_choice_field_choices(self.report_model, col_name):
             return dict(choices).get(val, val)
-        
-        return formatted_val or val
+
+        return str(val)
+
+    def used_filter_format(self, col_name, val):        
+        if isinstance(val, list):
+            return ", ".join(
+                map(
+                    lambda v: self._format_used_filter(col_name, v),
+                    val,
+                )
+            )
+            
+        return self._format_used_filter(col_name, val) or val
 
     def setup(self, request, *args, **kwargs):
         super().setup(request, *args, **kwargs)
-        
+
         obj = self.template_object
         if not obj:
             self.have_template = False
             return
 
-        self.model = obj.model.model_class()
+        self.report_model = obj.model.model_class()
         self.template_columns = get_template_columns(obj)
         self.template_searchable_fields = get_template_columns(obj, searchables=True)
 
-        self.apply_filters()
-        filters_valid = lambda: self.template_filters.is_valid() and self.quicksearch.is_valid() and self.filters.is_valid()
+        self.get_filters()
+        self.report_qs = methodcaller("none" if self.template_filters.get_filters() else "all")(self.report_model.objects)
+        self.apply_user_path()
         
-        self.report_qs = self.model.objects.none()
-        if filters_valid():
+        if (
+            all(map(methodcaller("get_filters"), [self.filters, self.quicksearch, self.template_filters]))
+            and all(map(methodcaller("is_valid"), [self.filters, self.quicksearch, self.template_filters]))
+        ):
             self.report_qs = self.template_filters.qs.distinct().filter(
-                pk__in=Subquery((self.quicksearch.qs.distinct() & self.filters.qs.distinct()).values("pk"))
-            ).order_by(*self.model._meta.ordering or ["pk"])
+                pk__in=Subquery(
+                    (
+                        self.quicksearch.qs.distinct() & self.filters.qs.distinct()
+                    ).values("pk")
+                )
+            )
 
-            self.apply_user_path(self.model)        
-
-        if self.filters.is_valid() and self.quicksearch.is_valid():
+            self.report_qs = self.report_qs.distinct().order_by(
+                *self.report_model._meta.ordering or ["pk"]
+            )
+            
             cleaned_data = (
                 self.quicksearch.form.cleaned_data | self.filters.form.cleaned_data
             )
             self.used_filters = self.get_used_filters(
-                {get_column_verbose_name(self.model, k): self.used_filter_format(k, v) for k, v in cleaned_data.items() if bool(v)}
+                {
+                    get_column_verbose_name(self.report_model, k): self.used_filter_format(
+                        k, v
+                    )
+                    for k, v in cleaned_data.items()
+                    if bool(v)
+                }
             )
 
     def get_used_filters(self, cleaned_data):
@@ -280,31 +323,36 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
             [
                 f'{k} = {",".join(map(str, v)) if isinstance(v, list) else v}'
                 for k, v in cleaned_data.items()
+                if str(k).lower() != "search"
             ]
         )
-
-    def get_initial_value(self, initial):
-        initial = str(initial)
-
+        
+    def _prepare_initial(self, initial):
         if initial.lower() in ["true", "false"]:
             return initial.lower() == "true"
 
-        if (initial.startswith("[") and initial.endswith("]")) or initial.isnumeric():
+        if (initial.startswith("[") and initial.endswith("]")) or (not initial.startswith("0") and initial.isnumeric()):
             return ast.literal_eval(initial)
 
-        return initial
+    def get_initial_value(self, initial, *, key=""):
+        initial = str(initial)
+
+        if key.endswith("__in"):
+            return list(map(self._prepare_initial, self.request.GET.getlist(key)))
+
+        return self._prepare_initial(initial)
 
     def get_initials(self):
         return {
-            k: self.get_initial_value(v)
+            k: self.get_initial_value(v, key=k)
             for k, v in self.request.GET.dict().items()
-            if str(v) and v.strip() not in self.ignore_search_values
+            if str(v) and v.strip() not in self.ignore_search_values and k.lower() != "search"
         }
 
     def get_form_classes(self):
         if not self.template_object:
             return []
-        return [generate_filterset_form(self.model)]
+        return [generate_filterset_form(self.report_model)]
 
     def get_paginate_qs(self):
         return self.report_qs

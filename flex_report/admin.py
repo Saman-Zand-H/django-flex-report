@@ -4,8 +4,14 @@ from django import forms
 from django.contrib import admin
 from django.utils.html import format_html
 
-from .models import Column, TableButton, TablePage, Template
+from .models import Column, TableButton, TablePage, Template, TableButtonColor
 from .utils import get_table_page_choices, get_table_page_optional_choices
+
+
+@admin.register(TableButtonColor)
+class TableButtonColorAdmin(admin.ModelAdmin):
+    list_display = ["title", "color"]
+    search_fields = ["title", "color"]
 
 
 @admin.register(Template)
@@ -45,7 +51,8 @@ class TablePageAdmin(admin.ModelAdmin):
 
 @admin.register(Column)
 class ColumnAdmin(admin.ModelAdmin):
-    pass
+    search_fields = ["title"]
+    list_display = ["title", "model"]
 
 
 @admin.register(TableButton)

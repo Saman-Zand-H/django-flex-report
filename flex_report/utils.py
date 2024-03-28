@@ -1,7 +1,6 @@
 import contextlib
 import csv
 import datetime
-import importlib
 import io
 import json
 import re
@@ -10,7 +9,7 @@ from decimal import Decimal
 from functools import lru_cache, reduce
 from importlib import import_module
 from itertools import chain
-from operator import attrgetter, methodcaller
+from operator import attrgetter, methodcaller, and_, or_
 from typing import List
 from phonenumber_field.modelfields import PhoneNumberField
 import jdatetime
@@ -18,7 +17,9 @@ import pandas as pd
 import xlwt
 from dateparser.calendars.jalali import JalaliCalendar
 from django import forms
-from django.conf import settings
+import ast
+from django.db.models import Q
+from logging import getLogger
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.db.models.fields.related import ForeignObjectRel, RelatedField
@@ -41,6 +42,9 @@ from .constants import (
     REPORT_FIELDS_KEY,
     FieldTypes,
 )
+
+
+logger = getLogger(__name__)
 
 
 def nested_getattr(obj, attr, *args, sep="."):
@@ -92,7 +96,7 @@ def get_all_subclasses(class_):
 
 def get_urlpatterns(app_name: str) -> List[str]:
     try:
-        apps.get_app_config(app_name)
+        apps.get_app_config(app_name)  # noqa: F821
     except LookupError:
         return []
 
@@ -158,18 +162,6 @@ def get_model_method_result(model, key):
     and checks if its returned value is a populated list, and returns it.
     """
     return (callable((method := getattr(model, key, None))) and method()) or []
-
-
-def get_all_subclasses(class_):
-    subclasses = set()
-    work = [class_]
-    while work:
-        parent = work.pop()
-        for child in parent.__subclasses__():
-            if child not in subclasses:
-                subclasses.add(child)
-                work.append(child)
-    return subclasses
 
 
 @lru_cache(maxsize=None)
@@ -278,7 +270,7 @@ def get_choice_field_choices(model, column):
     """
     if isinstance(column, str):
         column = get_model_field(model, column)
-        
+
     return getattr(column, "choices", [])
 
 
@@ -406,7 +398,7 @@ def generate_filterset_form(model, *, form_classes=None, fields=None):
         form_classes = [forms.Form]
     if fields is None:
         fields = {}
-    
+
     return type(
         f"{getattr(model, '__name__', '')}DynamicFilterSetForm",
         tuple(form_classes),
@@ -478,15 +470,6 @@ def get_column_cell(obj, name, *, absolute_url=True):
     return (attr and str(attr)) or app_settings.DEFAULT_CELL_VALUE
 
 
-def increment_string_suffix(string):
-    r = re.subn(
-        r"[0-9]+$",
-        lambda x: f"{str(int(x.group()) + 1).zfill(len(x.group()))}",
-        string,
-    )
-    return r[0] if r[1] else f"{string}1"
-
-
 @export_format.register
 class ExportXls(BaseExportFormat):
     format_slug = "xls"
@@ -517,23 +500,32 @@ class ExportXls(BaseExportFormat):
         columns = kwargs.get("columns")
         cell_fn = kwargs.get("cell_fn")
         sheet_name = kwargs.get("sheet_name")
-        
+
         required_args = ["queryset", "columns"]
         for arg in required_args:
             if arg not in kwargs:
                 raise TypeError(f"missing required argument: '{arg}'")
-        
+
         if headers_name is None:
             headers_name = {}
         workbook = xlwt.Workbook(encoding="utf-8")
         default_style = xlwt.XFStyle()
-        sheet = workbook.add_sheet(sheet_name or str(nested_getattr(queryset, "model._meta.verbose_name_plural", "sheet")))
+        sheet = workbook.add_sheet(
+            sheet_name
+            or str(nested_getattr(queryset, "model._meta.verbose_name_plural", "sheet"))
+        )
 
         for num, column in enumerate(columns):
             value = headers_name.get(column, column)
             style = default_style
             if cell_fn:
-                style, value = cell_fn(obj=None, row_number=0, column=column, style=default_style, value=value)
+                style, value = cell_fn(
+                    obj=None,
+                    row_number=0,
+                    column=column,
+                    style=default_style,
+                    value=value,
+                )
             sheet.write(0, num, value, style)
 
         for x, obj in enumerate(queryset, start=1):
@@ -549,10 +541,12 @@ class ExportXls(BaseExportFormat):
                             style = cell_style
                         break
                 if cell_fn:
-                    style, value = cell_fn(obj=obj, row_number=x, column=column, style=style, value=value)
+                    style, value = cell_fn(
+                        obj=obj, row_number=x, column=column, style=style, value=value
+                    )
                 args = [x, y]
                 if style:
-                    args.extend([str(value), style])
+                    args.extend([value, style])
                 else:
                     args.append(value)
                 sheet.write(*args)
@@ -722,3 +716,46 @@ def is_field_valid(model, field, *, as_filter=False):
         as_filter and FilterSet.filter_for_field(db_field, get_field_name(db_field))
         return as_filter or not getattr(db_field, "primary_key", False)
     return False
+
+
+class QBuilder(ast.NodeVisitor):
+    def visit_BoolOp(self, node):
+        if isinstance(node.op, ast.And):
+            return reduce(and_, (self.visit(value) for value in node.values))
+        elif isinstance(node.op, ast.Or):
+            return reduce(or_, (self.visit(value) for value in node.values))
+        else:
+            raise ValueError(f"Unsupported operator: {node.op}")
+
+    def visit_Compare(self, node):
+        if len(node.ops) != 1 or len(node.comparators) != 1:
+            raise ValueError("Only simple comparisons are supported")
+        key = node.left.id
+        val = node.comparators[0].s
+        if isinstance(node.ops[0], ast.Eq):
+            return Q(**{key: val})
+        elif isinstance(node.ops[0], ast.NotEq):
+            return ~Q(**{key: val})
+        else:
+            raise ValueError("Only equality and inequality comparisons are supported")
+
+
+def string_to_q(q_str: str, q_vals: dict[str, str] = {}):
+    """
+    Takes a string that implements logics using parenthesis, ||, &&, and !=
+    and ends in ='%(val_name)s', uses q_vals to replace val_name with the value of the key,
+    and converts this whole string and val into django Q objects.
+    """
+    q_str = q_str.replace("||", "or").replace("&&", "and")
+
+    try:
+        q_str = q_str % q_vals
+    except KeyError:
+        logger.error("KeyError in string_to_q: %s", q_str)
+
+    tree = ast.parse(q_str, mode="eval")
+
+    builder = QBuilder()
+    q_obj = builder.visit(tree.body)
+
+    return q_obj

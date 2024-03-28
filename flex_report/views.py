@@ -151,7 +151,9 @@ class TemplateCreateInitView(BaseView, CreateView):
         return super(ModelFormMixin, self).form_valid(form)
 
     def get_success_url(self):
-        return reverse("flex_report:template:create_complete", kwargs={"pk": self.object.pk})
+        return reverse(
+            "flex_report:template:create_complete", kwargs={"pk": self.object.pk}
+        )
 
 
 template_create_init_view = TemplateCreateInitView.as_view()
@@ -331,7 +333,9 @@ class TemplateUpdateView(UpdateView, TemplateUpsertViewBase):
         return reverse("flex_report:template:index")
 
     def template_not_ready(self):
-        return redirect("flex_report:template:create_complete", pk=self.template_object.pk)
+        return redirect(
+            "flex_report:template:create_complete", pk=self.template_object.pk
+        )
 
 
 template_update_view = TemplateUpdateView.as_view()
@@ -349,7 +353,9 @@ class ReportView(ReportViewBase):
     template_name = "flex_report/view_page.html"
 
     def template_not_ready(self):
-        return redirect("flex_report:template:create_complete", pk=self.template_object.pk)
+        return redirect(
+            "flex_report:template:create_complete", pk=self.template_object.pk
+        )
 
 
 report_view = ReportView.as_view()
