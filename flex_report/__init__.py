@@ -7,14 +7,20 @@ from django_filters import utils as django_filter_utils
 from django.utils.translation import gettext as _
 
 from ._version import get_version
-from .constants import META_REPORT_KEY, BaseExportFormat, ReportModel
+from .constants import (
+    META_REPORT_KEY,
+    BaseExportFormat,
+    ReportModel,
+    BaseDynamicField,
+    DynamicSubField,
+)
 
 options.DEFAULT_NAMES = options.DEFAULT_NAMES + (META_REPORT_KEY,)
 
 
 export_format = BaseExportFormat
-
 report_model = ReportModel
+dynamic_field = BaseDynamicField
 
 
 __version__ = get_version()
@@ -23,6 +29,9 @@ __all__ = [
     "report_model",
     "BaseExportFormat",
     "export_format",
+    "BaseDynamicField",
+    "DynamicSubField",
+    "dynamic_field",
 ]
 
 

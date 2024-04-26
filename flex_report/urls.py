@@ -9,6 +9,7 @@ VIEWS = app_settings.VIEWS
 app_name = "flex_report"
 template_urls = [
     path("", VIEWS["TEMPLATE_LIST"], name="index"),
+    path("<int:pk>/export", VIEWS["REPORT_EXPORT"], name="export"),
     path(
         "new/",
         VIEWS["TEMPLATE_CREATE_INIT"],
@@ -66,7 +67,7 @@ column_urls = [
 
 urlpatterns = [
     path("<int:pk>/", VIEWS["REPORT"], name="view"),
-    path("<int:pk>/export", VIEWS["REPORT_EXPORT"], name="export"),
+    path("export/", VIEWS["GENERAL_QS_EXPORT"], name="export"),
     path("columns/", include((column_urls, "column"), namespace="column")),
     path(
         "template/",

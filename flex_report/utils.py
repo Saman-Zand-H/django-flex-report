@@ -4,8 +4,10 @@ import datetime
 import io
 import json
 import re
+from django.utils.translation import override
 from collections import OrderedDict
 from decimal import Decimal
+from django.db.models import QuerySet
 from functools import lru_cache, reduce
 from importlib import import_module
 from itertools import chain
@@ -31,7 +33,7 @@ from djmoney.models import fields as money_fields
 from djmoney.money import Money
 from phonenumber_field.phonenumber import PhoneNumber
 
-from flex_report import BaseExportFormat, ReportModel, export_format
+from flex_report import BaseExportFormat, ReportModel, export_format, dynamic_field
 from flex_report.fields import FieldFileAbsoluteURL
 
 from .app_settings import app_settings
@@ -41,6 +43,7 @@ from .constants import (
     REPORT_EXCULDE_KEY,
     REPORT_FIELDS_KEY,
     FieldTypes,
+    DynamicSubField,
 )
 
 
@@ -279,8 +282,10 @@ def get_column_type(model, column):
     takes in a model and a column name, and returns the column type.
     currently the possible types are: field, property, and custom.
     """
-    field = get_model_field(model, column)
+    if column in dynamic_field.fields:
+        return FieldTypes.dynamic
 
+    field = get_model_field(model, column)
     if field:
         return FieldTypes.field
 
@@ -288,9 +293,6 @@ def get_column_type(model, column):
 
     if isinstance(field, property):
         return FieldTypes.property
-
-    if callable(field):
-        return FieldTypes.custom
 
     return None
 
@@ -329,6 +331,8 @@ def get_field_lookups(field):
             return ["startswith"]
         case models.DateField | models.TimeField | models.DateTimeField:
             return ["lte", "gte"]
+        case models.IntegerField | models.FloatField | models.DecimalField | models.PositiveSmallIntegerField | models.PositiveIntegerField:
+            return ["lte", "gte", "exact"]
         case models.ManyToManyField | models.ForeignKey:
             return ["in"]
         case models.BooleanField:
@@ -406,7 +410,7 @@ def generate_filterset_form(model, *, form_classes=None, fields=None):
     )
 
 
-def get_template_columns(template, searchables=False):
+def get_template_columns(template, searchables=False, as_dict=True):
     """
     Takes in a template object and returns an dict of fields and custom fields defined on the model,
     where the keys are the name of the field, and the value is the display name evaluated for the field-name.
@@ -415,7 +419,12 @@ def get_template_columns(template, searchables=False):
     if searchables:
         qs = qs.filter(searchable=True)
 
-    return {col_id: col_title for col_id, col_title in qs.values_list("id", "title")}
+    if as_dict:
+        return {
+            col_id: col_title for col_id, col_title in qs.values_list("id", "title")
+        }
+
+    return qs
 
 
 def get_column_cell(obj, name, *, absolute_url=True):
@@ -423,27 +432,22 @@ def get_column_cell(obj, name, *, absolute_url=True):
     Takes in an object and a column name, and returns the value of the column for the object.
     If the column is a custom field, it returns the value of the custom field.
     """
-    model = obj._meta.model
-    if (
-        (custom_field_part := name.split("."))
-        and len(custom_field_part) > 1
-        and get_column_type(model, (custom_field_function_name := custom_field_part[0]))
-        == FieldTypes.custom
-    ):
-        custom_field_value = get_model_custom_field_value(
-            model, custom_field_function_name
-        )[custom_field_part[1]]
-        custom_field_function = getattr(obj, custom_field_function_name)
-        return custom_field_function(custom_field_value[0])
+    model = obj._meta.model if hasattr(obj, "_meta") else None
+
+    if isinstance(name, DynamicSubField):
+        return name.get_value(obj)
 
     if callable(name):
         return name(obj, name)
+
+    if isinstance(obj, dict):
+        return obj.get(name, app_settings.DEFAULT_CELL_VALUE)
 
     attr = nested_getattr(obj, name, None, sep="__")
     if isinstance(attr, bool):
         return attr
 
-    if field := get_model_field(model, name):
+    if model and (field := get_model_field(model, name)):
         if (
             isinstance(attr, datetime.datetime)
             and type(field) in app_settings.TIME_FORMATS
@@ -462,52 +466,45 @@ def get_column_cell(obj, name, *, absolute_url=True):
             attr = getattr(obj, f"get_{field.name}_display", lambda: attr)()
         elif isinstance(field, money_fields.MoneyField):
             attr = str(attrgetter(name)(obj))
-        elif isinstance(field, models.FileField):
-            attr = FieldFileAbsoluteURL(file=attr, absolute=absolute_url)
+        elif isinstance(field, (models.FileField, models.ImageField)):
+            attr = FieldFileAbsoluteURL(file=attr, absolute=absolute_url).url
         elif isinstance(field, PhoneNumberField):
             attr = str(attr).replace(" ", "-")
 
     return (attr and str(attr)) or app_settings.DEFAULT_CELL_VALUE
 
 
-@export_format.register
 class ExportXls(BaseExportFormat):
     format_slug = "xls"
     format_name = "Excel"
+    format_ext = ".xlsx"
 
-    @classmethod
-    def handle(cls, *args, **kwargs):
-        """
-        Convert queryset or list of rows as dict to XLS file.
-        ### Parameters
-        Get ``columns`` as list of keys to get from object and
-        ``headers`` can be as mapping of column and label for file headers.
+    def get_export_filename(self):
+        qs = self.get_export_qs()
+        if not self.export_filename and isinstance(qs, QuerySet):
+            with override("en"):
+                return f"{qs.model._meta.verbose_name_plural}{self.format_ext}"
 
-        ### Returns
-        ``xlwt.Workbook`` object.
+        return f"{self.export_filename}{self.format_ext}"
 
-        ### Example
-            >>> response = HttpResponse(....)
-            qs = Users.objects.all()
-            columns = ["first_name", "last_name"]
-            headers = {"first_name": "First Name", "last_name": "Last Name"}
-            wb = export_queryset_to_xls(qs, columns, headers)
-            wb.save(response)
+    def _apply_cell_style_map(self, style, value):
+        style_map = {k: v for k, v in REPORT_CELL_STYLE_MAP if isinstance(value, k)}
+        for _, cell_style in style_map:
+            return cell_style, (callable(cell_style) and cell_style or (lambda i: i))(
+                value
+            )
+        return style, value
 
-        """
-        headers_name = kwargs.get("headers_name")
-        queryset = kwargs.get("queryset")
-        columns = kwargs.get("columns")
-        cell_fn = kwargs.get("cell_fn")
-        sheet_name = kwargs.get("sheet_name")
+    def _default_cell_fn(self, style, value, *args, **kwargs):
+        return style, value
 
-        required_args = ["queryset", "columns"]
-        for arg in required_args:
-            if arg not in kwargs:
-                raise TypeError(f"missing required argument: '{arg}'")
+    def export(self):
+        headers_name = self.get_export_headers()
+        columns = headers_name.keys()
+        queryset = self.get_export_qs()
+        sheet_name = str(self.get_export_kwargs().get("sheet_name", "default"))
+        cell_fn = self.get_export_kwargs().get("cell_fn", self._default_cell_fn)
 
-        if headers_name is None:
-            headers_name = {}
         workbook = xlwt.Workbook(encoding="utf-8")
         default_style = xlwt.XFStyle()
         sheet = workbook.add_sheet(
@@ -516,96 +513,66 @@ class ExportXls(BaseExportFormat):
         )
 
         for num, column in enumerate(columns):
-            value = headers_name.get(column, column)
-            style = default_style
-            if cell_fn:
-                style, value = cell_fn(
-                    obj=None,
-                    row_number=0,
-                    column=column,
-                    style=default_style,
-                    value=value,
-                )
+            style, value = default_style, headers_name.get(column, column)
+            if isinstance(column, DynamicSubField):
+                value = column.get_verbose_name()
+            style, value = cell_fn(
+                obj=None, row_number=0, column=column, style=style, value=value
+            )
             sheet.write(0, num, value, style)
 
         for x, obj in enumerate(queryset, start=1):
             for y, column in enumerate(columns):
-                value = get_column_cell(obj, column)
-                style = default_style
-                for value_type, cell_style in REPORT_CELL_STYLE_MAP:
-                    if isinstance(value, value_type):
-                        if callable(cell_style):
-                            style = default_style
-                            value = cell_style(value)
-                        else:
-                            style = cell_style
-                        break
-                if cell_fn:
-                    style, value = cell_fn(
-                        obj=obj, row_number=x, column=column, style=style, value=value
-                    )
-                args = [x, y]
-                if style:
-                    args.extend([value, style])
-                else:
-                    args.append(value)
-                sheet.write(*args)
+                style, value = default_style, get_column_cell(obj, column)
+                style, value = self._apply_cell_style_map(default_style, value)
+                style, value = cell_fn(
+                    obj=obj, row_number=x, column=column, style=style, value=value
+                )
+                value = str(value).strip("_")
+                sheet.write(x, y, value, style or default_style)
 
         return workbook
 
-    @classmethod
-    def handle_response(cls, response, *args, **kwargs):
-        wb = cls.handle(*args, **kwargs)
+    def handle(self):
+        return self.export()
+
+    def handle_response(self, response, *args, **kwargs):
+        wb = self.handle(*args, **kwargs)
         wb.save(response)
         return response
 
 
-@export_format.register
+export_format.register(ExportXls)
+
+
 class ExportCsv(BaseExportFormat):
     format_slug = "csv"
     format_name = "CSV"
+    format_ext = ".csv"
 
-    @classmethod
-    def handle(cls, *args, **kwargs):
-        """
-        Convert queryset or list rows as dict to CSV file.
-        ### Parameters
-        Get ``columns`` as list of keys to get from object and
-        ``headers`` can be as mapping of column and label for file headers.
+    def export(self):
+        headers_name = self.get_export_headers()
+        columns = headers_name.keys()
+        queryset = self.get_export_qs()
 
-        ### Returns
-        ``io.StringIO`` object.
-
-        ### Example
-            >>> response = HttpResponse(....)
-            qs = Users.objects.all()
-            columns = ["first_name", "last_name"]
-            headers = {"first_name": "First Name", "last_name": "Last Name"}
-            buff = export_queryset_to_csv(qs, columns, headers)
-            response.write(buff.getvalue())
-
-        """
-        if not (queryset := kwargs.get("queryset", False)):
-            raise TypeError("missing required argument: 'queryset'")
-
-        if not (columns := kwargs.get("columns", False)):
-            raise TypeError("missing required argument: 'columns'")
-
-        if (headers := kwargs.get("headers")) is None:
-            headers = {}
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow([headers.get(column, column) for column in columns])
+        writer.writerow([headers_name.get(column, column) for column in columns])
         writer.writerows(
             [[get_column_cell(obj, column) for column in columns] for obj in queryset]
         )
         return output
 
-    @classmethod
-    def handle_response(cls, response, *args, **kwargs):
-        buff = cls.handle(*args, **kwargs)
+    def handle(self, *args, **kwargs):
+        return self.export()
+
+    def handle_response(self, response, *args, **kwargs):
+        buff = self.handle(*args, **kwargs)
         response.write(buff.getvalue())
         return response
+
+
+export_format.register(ExportCsv)
 
 
 def queryset_to_df(queryset, columns, headers):
@@ -759,3 +726,31 @@ def string_to_q(q_str: str, q_vals: dict[str, str] = {}):
     q_obj = builder.visit(tree.body)
 
     return q_obj
+
+
+def get_related_property(model, field_name):
+    fields = field_name.split(LOOKUP_SEP)
+
+    latest_model = model
+    for field in fields[:-1]:
+        field = get_model_field(latest_model, field)
+
+        if isinstance(field, RelatedField):
+            field_model = field.remote_field.model
+        elif isinstance(field, ForeignObjectRel):
+            field_model = field.related_model
+        else:
+            return None
+
+        latest_model = field_model
+
+    property_name = fields[-1]
+
+    if (
+        hasattr(latest_model, property_name)
+        and (field := getattr(latest_model, property_name))
+        and (isinstance(field, property) or callable(field))
+    ):
+        return field
+
+    return None

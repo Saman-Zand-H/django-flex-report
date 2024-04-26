@@ -106,6 +106,7 @@ class AppSettings(object):
     def VIEWS(self):
         dflt = views = {
             "TEMPLATE_LIST": "flex_report.views.template_list_view",
+            "GENERAL_QS_EXPORT": "flex_report.views.general_qs_export_view",
             "TEMPLATE_CREATE_INIT": "flex_report.views.template_create_init_view",
             "TEMPLATE_CREATE_COMPLETE": "flex_report.views.template_create_complete_view",
             "TEMPLATE_DELETE": "flex_report.views.template_delete_view",

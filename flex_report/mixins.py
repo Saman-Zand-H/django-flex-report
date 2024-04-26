@@ -1,6 +1,6 @@
 import ast
 import mimetypes
-from operator import call, ne, methodcaller
+from operator import call, ne, methodcaller, attrgetter
 from functools import partial
 from logging import getLogger
 
@@ -8,11 +8,11 @@ from django.core.exceptions import PermissionDenied
 from django.db.models import Subquery
 from django.core.paginator import EmptyPage, Paginator
 from django.http import HttpResponseBadRequest, HttpResponseForbidden
-from django.shortcuts import HttpResponse, redirect
+from django.shortcuts import HttpResponse
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import View
 
-from flex_report import export_format
+from flex_report import export_format, BaseExportFormat
 
 from .app_settings import app_settings
 from .templatetags.flex_report_filters import get_column_verbose_name
@@ -26,6 +26,7 @@ from .utils import (
     get_template_columns,
     get_choice_field_choices,
     string_to_q,
+    FieldTypes,
 )
 
 logger = getLogger(__file__)
@@ -107,59 +108,82 @@ class TemplateObjectMixin(View):
 
 
 class QuerySetExportMixin(View):
-    valid_file_exports = ["xls", "csv", "pdf"]
-    export_format = None
-    export_file_name = None
-    export_qs = None
-    export_columns = None
-    export_headers = None
-    sheet_name = None
+    export_qs = []
+    export_headers = {}
+    export_columns = []
+    export_kwargs = {}
+    export_filename = None
 
-    def get_export_qs(self):
-        return self.export_qs or []
+    def get_export_filename(self):
+        return self.export_filename
 
     def get_export_columns(self):
-        return self.export_columns or [*self.get_export_headers().values()] or []
+        return self.export_columns
 
     def get_export_headers(self):
-        return self.export_headers or []
+        return self.export_headers
 
-    def get_handle_kwargs(self):
+    def get_export_qs(self):
+        return self.export_qs
+
+    def get_export_kwargs(self):
+        return self.export_kwargs
+
+    def get_handle_qs(self):
         return {
-            "queryset": self.get_export_qs(),
-            "columns": self.get_export_columns(),
-            "headers": self.get_export_headers(),
+            "export_qs": self.get_export_qs(),
+            "export_headers": self.get_export_headers(),
+            "export_columns": self.get_export_columns(),
+            "export_kwargs": self.get_export_kwargs(),
         }
 
+    def check_auth(self):
+        if not hasattr((exporter := self.get_exporter()), "check_auth"):
+            return
+
+        if exporter.check_auth():
+            return
+
+        raise HttpResponseForbidden(content="403 Forbidden")
+
     def dispatch(self, *args, **kwargs):
-        if not self.export_format and (
+        if (
             not (format_ := self.request.GET.get("format", "").lower())
-            or format_ not in self.valid_file_exports
+            or format_ not in export_format.formats.keys()
         ):
             return HttpResponseBadRequest()
-        self.export_format = self.export_format or format_
+
+        self.export_format = format_
+        self.check_auth()
+
         return super().dispatch(*args, **kwargs)
 
+    def get_exporter(self) -> BaseExportFormat:
+        try:
+            format_ = export_format.formats[self.export_format]
+            if any(self.get_handle_qs().values()):
+                return type("DynamicExporter", (format_,), self.get_handle_qs())(
+                    request=self.request, user=self.request.user
+                )
+            return format_(request=self.request, user=self.request.user)
+        except KeyError as e:
+            raise NotImplementedError(
+                f"The wanted format '{self.export_format}' isn't handled."
+            ) from e
+
     def get(self, *args, **kwargs):
-        filename = f"{self.export_file_name and f'{self.export_file_name}.' or ''}{self.export_format}"
+        format_ = self.get_exporter()
+        filename = str(format_.get_export_filename())
+
         response = HttpResponse(
             content_type=mimetypes.types_map.get(
-                f".{self.export_format}",
+                f".{format_.format_ext}",
                 "application/octet-stream",
             ),
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
-
-        try:
-            format_ = export_format.formats[self.export_format]
-        except KeyError:
-            logger.critical(f"The wanted format '{self.export_format}' isn't handled.")
-            return redirect(self.request.META.get("HTTP_REFERER", "/"))
-
-        print(self.get_handle_kwargs())
         response = format_.handle_response(
             response=response,
-            **self.get_handle_kwargs(),
         )
 
         return response
@@ -205,6 +229,7 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
             self.report_model,
             self.get_form_classes(),
         )(initials)
+        
         self.quicksearch = generate_quicksearch_filterset_from_model(
             self.report_model, list(self.template_searchable_fields.values())
         )(initials)
@@ -213,7 +238,9 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
         LOGICAL_OPERATORS = ["()", "&", "|", "!="]
         paths = self.template_object.model_user_path or {}
         path_func = getattr(
-            self.report_model, app_settings.MODEL_USER_PATH_FUNC_NAME, lambda request: {}
+            self.report_model,
+            app_settings.MODEL_USER_PATH_FUNC_NAME,
+            lambda request: {},
         )
 
         accessed_paths = {
@@ -241,19 +268,19 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
         if not any(map(lambda op: op in accessed_path, LOGICAL_OPERATORS)):
             self.report_qs = self.report_qs.filter(
                 **{accessed_path: accessed_val}
-            )
+            ).distinct()
             return
 
         self.report_qs = self.report_qs.filter(
             string_to_q(accessed_path, accessed_val)
-        )
-        
+        ).distinct()
+
     def _format_used_filter(self, col_name, val):
         formats = {
             **{k: "بله" for k in ["true", "True", True]},
             **{k: "خیر" for k in ["false", "False", False]},
         }
-        
+
         if formatted_val := formats.get(val, False):
             return formatted_val
 
@@ -262,7 +289,7 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
 
         return str(val)
 
-    def used_filter_format(self, col_name, val):        
+    def used_filter_format(self, col_name, val):
         if isinstance(val, list):
             return ", ".join(
                 map(
@@ -270,7 +297,7 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
                     val,
                 )
             )
-            
+
         return self._format_used_filter(col_name, val) or val
 
     def setup(self, request, *args, **kwargs):
@@ -282,16 +309,36 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
             return
 
         self.report_model = obj.model.model_class()
-        self.template_columns = get_template_columns(obj)
+        self.template_columns = get_template_columns(obj, as_dict=False)
         self.template_searchable_fields = get_template_columns(obj, searchables=True)
 
         self.get_filters()
-        self.report_qs = methodcaller("none" if self.template_filters.get_filters() else "all")(self.report_model.objects)
+        self.report_qs = (
+            self.template_filters.qs.distinct()
+            if self.template_filters.get_filters()
+            else self.report_model.objects.all()
+        )
         self.apply_user_path()
-        
+
         if (
-            all(map(methodcaller("get_filters"), [self.filters, self.quicksearch, self.template_filters]))
-            and all(map(methodcaller("is_valid"), [self.filters, self.quicksearch, self.template_filters]))
+            all(
+                map(
+                    methodcaller("get_filters"),
+                    [self.filters, self.quicksearch, self.template_filters],
+                )
+            )
+            and all(
+                map(
+                    attrgetter("data"),
+                    [self.filters, self.quicksearch, self.template_filters],
+                )
+            )
+            and all(
+                map(
+                    methodcaller("is_valid"),
+                    [self.filters, self.quicksearch, self.template_filters],
+                )
+            )
         ):
             self.report_qs = self.template_filters.qs.distinct().filter(
                 pk__in=Subquery(
@@ -304,15 +351,15 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
             self.report_qs = self.report_qs.distinct().order_by(
                 *self.report_model._meta.ordering or ["pk"]
             )
-            
+
             cleaned_data = (
                 self.quicksearch.form.cleaned_data | self.filters.form.cleaned_data
             )
             self.used_filters = self.get_used_filters(
                 {
-                    get_column_verbose_name(self.report_model, k): self.used_filter_format(
-                        k, v
-                    )
+                    get_column_verbose_name(
+                        self.report_model, k
+                    ): self.used_filter_format(k, v)
                     for k, v in cleaned_data.items()
                     if bool(v)
                 }
@@ -326,13 +373,17 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
                 if str(k).lower() != "search"
             ]
         )
-        
+
     def _prepare_initial(self, initial):
         if initial.lower() in ["true", "false"]:
             return initial.lower() == "true"
 
-        if (initial.startswith("[") and initial.endswith("]")) or (not initial.startswith("0") and initial.isnumeric()):
+        if (initial.startswith("[") and initial.endswith("]")) or (
+            not initial.startswith("0") and initial.isnumeric()
+        ):
             return ast.literal_eval(initial)
+        
+        return initial
 
     def get_initial_value(self, initial, *, key=""):
         initial = str(initial)
@@ -346,7 +397,8 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
         return {
             k: self.get_initial_value(v, key=k)
             for k, v in self.request.GET.dict().items()
-            if str(v) and v.strip() not in self.ignore_search_values and k.lower() != "search"
+            if str(v)
+            and v.strip() not in self.ignore_search_values
         }
 
     def get_form_classes(self):
@@ -367,6 +419,12 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
             "columns": self.template_columns,
             "columns_count": len(self.template_columns)
             + self.template_object.buttons.count()
+            + sum(
+                len(field.get_dynamic_obj().unpack_field())
+                for field in self.template_columns.filter(
+                    column_type=FieldTypes.dynamic
+                ).only("pk")
+            )
             + 1,
             "filters": self.filters,
             "buttons": self.template_object.buttons.all(),

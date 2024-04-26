@@ -10,10 +10,11 @@ from django_better_admin_arrayfield.models.fields import ArrayField
 from django_jalali.db.models import jDateTimeField
 from sortedm2m.fields import SortedManyToManyField
 
-from flex_report import report_model
+from flex_report import report_model, dynamic_field, BaseDynamicField
 
 from .managers import ColumnManager
-from .utils import get_view_name_url, is_field_valid
+from .utils import get_view_name_url, is_field_valid, get_column_type
+from .constants import FieldTypes
 
 
 class TablePage(models.Model):
@@ -40,6 +41,10 @@ class TablePage(models.Model):
 
 
 class Column(models.Model):
+    class COLUMN_TYPES(models.TextChoices):
+        model = "model", _("Model")
+        dynamic = "dynamic", _("Dynamic")
+
     title = models.CharField(verbose_name=_("Title"), max_length=150, db_index=True)
     searchable = models.BooleanField(default=False)
     creator = models.ForeignKey(
@@ -64,14 +69,40 @@ class Column(models.Model):
         on_delete=models.CASCADE,
         related_name="flex_columns",
     )
+    column_type = models.CharField(
+        choices=COLUMN_TYPES.choices,
+        verbose_name=_("Column Type"),
+        default=COLUMN_TYPES.model,
+    )
 
     objects = ColumnManager()
 
     def __str__(self):
         return f"{self.model}: {self.title}"
 
+    def get_dynamic_obj(self) -> None | BaseDynamicField:
+        if self.column_type != self.COLUMN_TYPES.dynamic:
+            return
+
+        return dynamic_field.get_by_slug(self.title)
+
     def clean(self):
-        if not is_field_valid(self.model.model_class(), self.title):
+        if (
+            (column_type := get_column_type(self.model, self.title))
+            == FieldTypes.dynamic
+            and (dynamic_model := self.get_dynamic_obj().model)
+            and self.model.model_class() != dynamic_model
+        ):
+            raise ValidationError(
+                {
+                    "title": _(
+                        "This dynamic column has been registered for another model, which is %(title)s."
+                    )
+                    % {"title": dynamic_model}
+                }
+            )
+
+        if column_type and not is_field_valid(self.model.model_class(), self.title):
             raise ValidationError(
                 {
                     "title": _(
@@ -277,6 +308,9 @@ class Template(models.Model):
     @property
     def user_fullname(self):
         return getattr(self.creator, "full_name", _("Not Set"))
+
+    def __str__(self):
+        return self.title
 
     class Meta:
         verbose_name = _("Template")

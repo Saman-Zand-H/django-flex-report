@@ -1,4 +1,5 @@
 import datetime
+from typing import Iterable, Any, List
 from abc import abstractmethod
 
 import django_filters
@@ -19,7 +20,7 @@ REPORT_CELL_STYLE_MAP = (
     (bool, xlwt.easyxf(num_format_str="BOOLEAN")),
     (
         FieldFileAbsoluteURL,
-        lambda v: xlwt.Formula(f'HYPERLINK("{v}";"{v}")') if v else "",
+        lambda v: xlwt.Formula(f'HYPERLINK("{v}","{v}")') if v else "",
     ),
 )
 
@@ -39,14 +40,77 @@ class ReportModel:
         return models[0]
 
 
+class DynamicSubField:
+    slug = None
+    verbose_name = None
+
+    def __init__(self, verbose_name=None):
+        self.verbose_name = verbose_name or self.verbose_name
+
+    def get_verbose_name(self):
+        return str(self.verbose_name)
+
+    @abstractmethod
+    def get_value(cls, *args, **kwargs):
+        pass
+
+
+class BaseDynamicField:
+    field_slug = None
+    verbose_name = None
+    model = None
+    fields = {}
+
+    @classmethod
+    def get_by_slug(cls, slug):
+        try:
+            return cls.fields[slug]
+        except KeyError as e:
+            raise NotImplementedError(f"Field with slug {slug} not found") from e
+
+    @classmethod
+    def register(cls, field):
+        assert issubclass(field, cls)
+        cls.fields.update({field.field_slug: field})
+        return field
+
+    @classmethod
+    @abstractmethod
+    def unpack_field(cls, *args, **kwargs) -> List[DynamicSubField]:
+        pass
+
+
 class BaseExportFormat:
     formats = {}
     format_slug = None
     format_name = None
+    format_ext = None
+    export_headers = {}
+    export_qs = []
+    export_kwargs = {}
+    export_filename = None
 
-    @classmethod
-    def __str__(cls):
-        return cls.format_name
+    def __init__(self, user=None, request=None):
+        self.user = user
+        self.request = request
+
+    def get_export_headers(self):
+        return self.export_headers
+
+    def get_export_kwargs(self):
+        return self.export_kwargs
+
+    def get_export_filename(self):
+        return f"{self.export_filename or self.format_slug}{self.format_ext}"
+
+    def get_export_qs(self):
+        return self.export_qs
+
+    def check_auth(self):
+        return True
+
+    def __str__(self):
+        return self.format_name
 
     @classmethod
     @property
@@ -63,20 +127,19 @@ class BaseExportFormat:
     @classmethod
     def register(cls, format_):
         assert issubclass(format_, BaseExportFormat)
-        return cls.formats.update({format_.format_slug: format_})
+        cls.formats.update({format_.format_slug: format_})
+        return format_
 
     @classmethod
     def register_formats(cls, formats: dict):
         cls.formats.update(formats)
 
-    @classmethod
     @abstractmethod
-    def handle(cls, *args, **kwargs):
+    def handle(cls):
         raise NotImplementedError
 
-    @classmethod
     @abstractmethod
-    def handle_response(cls, *args, **kwargs):
+    def handle_response(self, *args, **kwargs):
         raise NotImplementedError
 
 
@@ -84,3 +147,8 @@ class FieldTypes:
     field = "field"
     property = "property"
     custom = "custom"
+    dynamic = "dynamic"
+
+
+class BaseDynamicColumn:
+    columns = {}

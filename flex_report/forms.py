@@ -57,22 +57,6 @@ def generate_report_create_form(model, col_initial=None):
                 initial=col_initial,
                 choices=list(get_model_columns(model).items()),
             ),
-            "users": forms.ModelMultipleChoiceField(
-                widget=forms.MultipleChoiceField.widget(
-                    attrs={"class": "selectize-field"}
-                ),
-                required=False,
-                queryset=get_user_model().objects.all(),
-                label=_("Users"),
-            ),
-            "groups": forms.ModelMultipleChoiceField(
-                widget=forms.MultipleChoiceField.widget(
-                    attrs={"class": "selectize-field"}
-                ),
-                required=False,
-                queryset=Group.objects.all(),
-                label=_("Groups"),
-            ),
         },
     )
 

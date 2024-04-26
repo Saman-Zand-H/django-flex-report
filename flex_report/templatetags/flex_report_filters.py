@@ -15,7 +15,12 @@ from django.urls.exceptions import NoReverseMatch
 from django.utils.safestring import mark_safe
 
 from flex_report.app_settings import app_settings
-from flex_report.utils import get_column_cell, get_model_field, field_to_db_field
+from flex_report.utils import (
+    get_column_cell,
+    get_model_field,
+    field_to_db_field,
+    get_related_property,
+)
 
 register = template.Library()
 
@@ -123,17 +128,19 @@ def is_row_value_valid(f, v):
 @register.filter
 def get_column_verbose_name(obj, column):
     lookup_exprs = list(map(lambda i: f"__{i}", ["in"]))
+
     for lookup in filter(lambda i: column.endswith(i), lookup_exprs):
         column = column.rstrip(lookup)
-                        
+
     field_col = getattr(field_to_db_field(obj, column), "verbose_name", False)
-    if (
-        getattr(obj, column, False)
-        and not field_col
-        and (property_col := getattr(getattr(obj, column), "fget", False))
-    ):
-        field_col = getattr(property_col, "verbose_name", False)
-    
+    if field_col:
+        return mark_safe(field_col or column.replace("_", "").title())
+
+    if (field := getattr(obj, column, False)) and hasattr(field, "fget"):
+        field_col = field.fget.verbose_name
+    elif field := get_related_property(obj, column):
+        field_col = field.fget.verbose_name
+
     return mark_safe(field_col or column.replace("_", " ").title())
 
 

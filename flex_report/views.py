@@ -1,7 +1,9 @@
 import contextlib
 from operator import call
+from collections import OrderedDict
 
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.db import transaction
 from django.core.exceptions import FieldError, PermissionDenied
 from django.db.models import Q
 from django.http import Http404
@@ -29,12 +31,15 @@ from .forms import (
     model_user_path_formset,
 )
 from .mixins import QuerySetExportMixin, TablePageMixin, TemplateObjectMixin
+from .templatetags.flex_report_filters import get_column_verbose_name
 from .models import Column, Template
 from .utils import (
     clean_request_data,
     get_report_filename,
     increment_string_suffix,
     set_template_as_page_default,
+    get_column_type,
+    FieldTypes,
 )
 
 
@@ -163,13 +168,21 @@ class TemplateCloneView(BaseView, FormMixin, SingleObjectMixin):
     model = Template
     http_method_names = ["get"]
 
+    @transaction.atomic
     def get(self, *args, **kwargs):
         object = self.get_object()
-        object.pk = None
-        object.title = increment_string_suffix(object.title)
-        object.creator = self.request.user
-        object.is_page_default = False
-        object.save()
+        clone = Template.objects.create(
+            title=increment_string_suffix(object.title),
+            creator=self.request.user,
+            model=object.model,
+            page=object.page,
+            is_page_default=False,
+            filters=object.filters,
+            model_user_path=object.model_user_path,
+            status=object.status,
+            has_export=object.has_export,
+        )
+        clone.columns.add(*object.columns.all())
         return self.form_valid(None)
 
     def get_success_url(self):
@@ -298,7 +311,7 @@ template_create_complete_view = TemplateCreateCompleteView.as_view()
 
 
 class TemplateUpdateView(UpdateView, TemplateUpsertViewBase):
-    fields = ["title", "page", "users", "groups"]
+    fields = ["title", "page"]
     template_name_suffix = "_form"
 
     def get_form_classes(self):
@@ -323,7 +336,7 @@ class TemplateUpdateView(UpdateView, TemplateUpsertViewBase):
         context.update(
             {
                 "object": self.object,
-                "meta_fields_name": [*self.fields, "columns", "users", "groups"],
+                "meta_fields_name": self.fields,
             }
         )
 
@@ -361,13 +374,33 @@ class ReportView(ReportViewBase):
 report_view = ReportView.as_view()
 
 
+class GeneralQuerySetExportView(QuerySetExportMixin):
+    pass
+
+
+general_qs_export_view = GeneralQuerySetExportView.as_view()
+
+
 class ReportExportView(QuerySetExportMixin, ReportViewBase):
     def get(self, *args, **kwargs):
         self.export_file_name = get_report_filename(self.template_object)
 
-        columns = self.template_columns
+        columns = OrderedDict()
+        for col in self.template_columns:
+            if get_column_type(self.report_model, col.title) != FieldTypes.dynamic:
+                columns[col.title] = str(
+                    get_column_verbose_name(self.report_model, col.title)
+                )
+                continue
+
+            columns.update(
+                {
+                    subfield: str(subfield.get_verbose_name())
+                    for subfield in col.get_dynamic_obj().unpack_field()
+                }
+            )
+
         self.export_qs = self.report_qs
-        self.export_columns = columns.values()
         self.export_headers = columns
 
         return super().get(*args, **kwargs)
