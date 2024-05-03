@@ -15,7 +15,7 @@ from django.views.generic import View
 from flex_report import export_format, BaseExportFormat
 
 from .app_settings import app_settings
-from .templatetags.flex_report_filters import get_column_verbose_name
+from .utils import get_col_verbose_name
 from .filterset import (
     generate_filterset_from_model,
     generate_quicksearch_filterset_from_model,
@@ -212,14 +212,11 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
 
     def get_template(self):
         page_template = self.request.GET.get(self.page_template_keyword)
-        if (
-            page_template
-            and (
-                template := self.get_page_templates().filter(pk=page_template)
-            ).exists()
-        ):
+        if page_template and (
+            template := self.get_page_templates().filter(pk=page_template)
+        ).exists():
             return template.first()
-
+        
         return (
             self.get_page_templates().filter(is_page_default=True)
             or self.get_page_templates()
@@ -235,7 +232,7 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
             self.report_model,
             self.get_form_classes(),
         )(initials)
-
+        
         self.quicksearch = generate_quicksearch_filterset_from_model(
             self.report_model, list(self.template_searchable_fields.values())
         )(initials)
@@ -363,7 +360,7 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
             )
             self.used_filters = self.get_used_filters(
                 {
-                    get_column_verbose_name(
+                    get_col_verbose_name(
                         self.report_model, k
                     ): self.used_filter_format(k, v)
                     for k, v in cleaned_data.items()
@@ -374,7 +371,7 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
     def get_used_filters(self, cleaned_data):
         return _(" and ").join(
             [
-                f'{k} = {",".join(map(str, v)) if isinstance(v, list) else v}'
+                f'{k} = {" , ".join(map(str, v)) if isinstance(v, list) else v}'
                 for k, v in cleaned_data.items()
                 if str(k).lower() != "search"
             ]
@@ -388,7 +385,7 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
             not initial.startswith("0") and initial.isnumeric()
         ):
             return ast.literal_eval(initial)
-
+        
         return initial
 
     def get_initial_value(self, initial, *, key=""):

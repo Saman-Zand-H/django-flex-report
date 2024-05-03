@@ -24,8 +24,8 @@ class FilterSetMeta:
     def __init__(self, model, fields=[]):
         self.model = model
         self.searchable_fields = fields
-
-
+        
+        
 class CustomModelMultipleChoiceFilter(django_filters.ModelMultipleChoiceFilter):
     def get_filter_predicate(self, v):
         name = self.field_name

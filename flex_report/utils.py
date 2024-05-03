@@ -170,15 +170,15 @@ def get_model_method_result(model, key):
 
 def get_col_verbose_name(model, column):
     if isinstance(model, int):
-        if not (model := ContentType.objects.filter(pk=model)):
+        if not (model:=ContentType.objects.filter(pk=model)):
             return column
-
+        
         model = model.first().model_class()
-
+    
     lookup_exprs = list(map(lambda i: f"__{i}", ["in"]))
 
     for lookup in filter(lambda i: column.endswith(i), lookup_exprs):
-        column = column.rstrip(lookup)
+        column = column.replace(lookup, "")
 
     field_col = getattr(field_to_db_field(model, column), "verbose_name", False)
     if field_col:
@@ -188,7 +188,7 @@ def get_col_verbose_name(model, column):
         field_col = field.fget.verbose_name
     elif field := get_related_property(model, column):
         field_col = field.fget.verbose_name
-
+    
     return mark_safe(field_col or column.replace("_", " ").title())
 
 
@@ -282,14 +282,14 @@ def get_model_columns(model, db_only=False, verbose=True):
     from flex_report.models import Column
 
     model_content_type = ContentType.objects.get_for_model(model)
-    columns = Column.objects.select_related("model").filter(model=model_content_type)
+    columns = (
+        Column.objects.select_related("model")
+        .filter(model=model_content_type)
+    )
     if db_only:
         columns = columns.filter(searchable=True)
-
-    return {
-        col_id: get_col_verbose_name(model, title) if verbose else title
-        for title, model, col_id in columns.values_list("title", "model", "id")
-    }
+        
+    return {col_id: get_col_verbose_name(model, title) if verbose else title for title, model, col_id in columns.values_list("title", "model", "id")}
 
 
 def get_choice_field_choices(model, column):
