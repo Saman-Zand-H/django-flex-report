@@ -137,11 +137,11 @@ class QuerySetExportMixin(View):
             "export_kwargs": self.get_export_kwargs(),
         }
 
-    def check_auth(self):
-        if not hasattr((exporter := self.get_exporter()), "check_auth"):
+    def test_func(self):
+        if not hasattr((exporter := self.get_exporter()), "test_func"):
             return
 
-        if exporter.check_auth():
+        if exporter.test_func():
             return
 
         raise HttpResponseForbidden(content="403 Forbidden")
@@ -154,7 +154,7 @@ class QuerySetExportMixin(View):
             return HttpResponseBadRequest()
 
         self.export_format = format_
-        self.check_auth()
+        self.test_func()
 
         return super().dispatch(*args, **kwargs)
 
@@ -206,18 +206,24 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
     ignore_search_values = [
         "unknown",
     ]
+    ignore_search_keys = [
+        "report_template",
+    ]
 
     def get_template(self):
         page_template = self.request.GET.get(self.page_template_keyword)
-        if page_template and (
-            template := self.get_page_templates().filter(pk=page_template)
+        if (
+            page_template
+            and (
+                template := self.get_page_templates().filter(pk=page_template)
+            ).exists()
         ):
             return template.first()
-        template = (
+
+        return (
             self.get_page_templates().filter(is_page_default=True)
             or self.get_page_templates()
-        )
-        return template.first()
+        ).first()
 
     def get_filters(self):
         initials = self.get_initials()
@@ -229,7 +235,7 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
             self.report_model,
             self.get_form_classes(),
         )(initials)
-        
+
         self.quicksearch = generate_quicksearch_filterset_from_model(
             self.report_model, list(self.template_searchable_fields.values())
         )(initials)
@@ -382,7 +388,7 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
             not initial.startswith("0") and initial.isnumeric()
         ):
             return ast.literal_eval(initial)
-        
+
         return initial
 
     def get_initial_value(self, initial, *, key=""):
@@ -399,6 +405,7 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
             for k, v in self.request.GET.dict().items()
             if str(v)
             and v.strip() not in self.ignore_search_values
+            and k.strip() not in self.ignore_search_keys
         }
 
     def get_form_classes(self):

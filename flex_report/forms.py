@@ -53,7 +53,7 @@ def generate_report_create_form(model, col_initial=None):
                     attrs={"class": "selectize-field"}
                 ),
                 required=True,
-                label=_("columns"),
+                label=_("Columns"),
                 initial=col_initial,
                 choices=list(get_model_columns(model).items()),
             ),

@@ -255,29 +255,9 @@ class TemplateUpsertViewBase(BaseView, TemplateObjectMixin, DetailView):
         context["filter"] = self.filter
         return context
 
-    def filter_model_user_path(self, model_user_path):
-        val = self.request.user
-        if hasattr(self.object.model, app_settings.MODEL_USER_PATH_FUNC_NAME):
-            val = call(
-                getattr(self.object.model, app_settings.MODEL_USER_PATH_FUNC_NAME),
-                {"request": self.request},
-            )
-
-        try:
-            self.object.model.model_class().objects.filter(**{model_user_path: val})
-            self.object.model_user_path = model_user_path
-        except FieldError:
-            pass
-
     def form_valid(self, form):
         cleaned_form = super().form_valid(form)
         data = clean_request_data(form.cleaned_data, self.filter_class)
-        model_user_path_forms = model_user_path_formset(data=self.request.POST)
-        if model_user_path_forms.is_valid():
-            model_user_path = "__".join(
-                [i.cleaned_data.get("title", "") for i in model_user_path_forms]
-            )
-            self.filter_model_user_path(model_user_path)
         self.object.filters = data["filters"]
 
         self.template_object.columns.clear()

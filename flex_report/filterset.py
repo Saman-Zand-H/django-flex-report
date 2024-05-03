@@ -2,6 +2,7 @@ from functools import reduce
 from operator import or_
 
 import django_filters
+from django_filters.filters import LOOKUP_SEP
 from django_filters import FilterSet as FilterSetBase
 
 from django import forms
@@ -23,6 +24,16 @@ class FilterSetMeta:
     def __init__(self, model, fields=[]):
         self.model = model
         self.searchable_fields = fields
+
+
+class CustomModelMultipleChoiceFilter(django_filters.ModelMultipleChoiceFilter):
+    def get_filter_predicate(self, v):
+        name = self.field_name
+        if name:
+            name = LOOKUP_SEP.join([name, self.lookup_expr])
+        predicate = super().get_filter_predicate(v)
+        predicate[name] = [v]
+        return predicate
 
 
 class FilterSet(FilterSetBase):
@@ -58,6 +69,9 @@ class FilterSet(FilterSetBase):
                         }
                     )
                 )
+            case _ if issubclass(filter_, django_filters.BaseInFilter):
+                filter_ = CustomModelMultipleChoiceFilter
+                opts.update(widget=filter_.field_class.widget())
         return filter_, opts
 
     def get_form_class(self):

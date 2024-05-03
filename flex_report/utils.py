@@ -5,6 +5,7 @@ import io
 import json
 import re
 from django.utils.translation import override
+from django.utils.safestring import mark_safe
 from collections import OrderedDict
 from decimal import Decimal
 from django.db.models import QuerySet
@@ -167,6 +168,30 @@ def get_model_method_result(model, key):
     return (callable((method := getattr(model, key, None))) and method()) or []
 
 
+def get_col_verbose_name(model, column):
+    if isinstance(model, int):
+        if not (model := ContentType.objects.filter(pk=model)):
+            return column
+
+        model = model.first().model_class()
+
+    lookup_exprs = list(map(lambda i: f"__{i}", ["in"]))
+
+    for lookup in filter(lambda i: column.endswith(i), lookup_exprs):
+        column = column.rstrip(lookup)
+
+    field_col = getattr(field_to_db_field(model, column), "verbose_name", False)
+    if field_col:
+        return mark_safe(field_col or column.replace("_", "").title())
+
+    if (field := getattr(model, column, False)) and hasattr(field, "fget"):
+        field_col = field.fget.verbose_name
+    elif field := get_related_property(model, column):
+        field_col = field.fget.verbose_name
+
+    return mark_safe(field_col or column.replace("_", " ").title())
+
+
 @lru_cache(maxsize=None)
 def get_report_models():
     """
@@ -253,18 +278,18 @@ def get_model_custom_field_value(model, field_name):
     return custom_fields[get_model_property(model, field_name)]
 
 
-def get_model_columns(model, db_only=False):
+def get_model_columns(model, db_only=False, verbose=True):
     from flex_report.models import Column
 
     model_content_type = ContentType.objects.get_for_model(model)
-    columns = (
-        Column.objects.select_related("model")
-        .filter(model=model_content_type)
-        .values_list("title", "id")
-    )
+    columns = Column.objects.select_related("model").filter(model=model_content_type)
     if db_only:
         columns = columns.filter(searchable=True)
-    return {col_id: title for title, col_id in columns.values_list("title", "id")}
+
+    return {
+        col_id: get_col_verbose_name(model, title) if verbose else title
+        for title, model, col_id in columns.values_list("title", "model", "id")
+    }
 
 
 def get_choice_field_choices(model, column):
@@ -474,10 +499,10 @@ def get_column_cell(obj, name, *, absolute_url=True):
     return (attr and str(attr)) or app_settings.DEFAULT_CELL_VALUE
 
 
-class ExportXls(BaseExportFormat):
+class ExportXLS(BaseExportFormat):
     format_slug = "xls"
     format_name = "Excel"
-    format_ext = ".xlsx"
+    format_ext = ".xls"
 
     def get_export_filename(self):
         qs = self.get_export_qs()
@@ -542,7 +567,7 @@ class ExportXls(BaseExportFormat):
         return response
 
 
-export_format.register(ExportXls)
+export_format.register(ExportXLS)
 
 
 class ExportCsv(BaseExportFormat):
