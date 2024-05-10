@@ -137,11 +137,11 @@ class QuerySetExportMixin(View):
             "export_kwargs": self.get_export_kwargs(),
         }
 
-    def test_func(self):
-        if not hasattr((exporter := self.get_exporter()), "test_func"):
+    def check_auth(self):
+        if not hasattr((exporter := self.get_exporter()), "check_auth"):
             return
 
-        if exporter.test_func():
+        if exporter.check_auth():
             return
 
         raise HttpResponseForbidden(content="403 Forbidden")
@@ -154,7 +154,7 @@ class QuerySetExportMixin(View):
             return HttpResponseBadRequest()
 
         self.export_format = format_
-        self.test_func()
+        self.check_auth()
 
         return super().dispatch(*args, **kwargs)
 

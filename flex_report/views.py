@@ -304,8 +304,10 @@ class TemplateUpdateView(UpdateView, TemplateUpsertViewBase):
         ]
 
     def get_initial(self):
+        template_columns = tuple(self.template_object.columns.values_list("pk", flat=True))
+        
         return self.request.POST or {
-            "columns": [*self.template_object.columns.values_list("id", flat=True)],
+            "columns": template_columns,
             **self.object.filters,
             **{f: getattr(self.object, f) for f in self.fields},
         }
@@ -382,6 +384,7 @@ class ReportExportView(QuerySetExportMixin, ReportViewBase):
 
         self.export_qs = self.report_qs
         self.export_headers = columns
+        self.export_kwargs = getattr(self.report_model, app_settings.MODEL_EXPORT_KWARGS_FUNC_NAME, {})()
 
         return super().get(*args, **kwargs)
 

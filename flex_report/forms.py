@@ -1,6 +1,5 @@
 from django import forms
-from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
+from collections import OrderedDict
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ImproperlyConfigured
 from django.utils.translation import gettext as _
@@ -25,7 +24,12 @@ model_user_path_formset = forms.formset_factory(
 
 class OrderedModelMultipleChoiceField(forms.MultipleChoiceField):
     def _fix_choices(self, values):
-        self.choices = values or self.choices
+        choices_dict = OrderedDict(self.choices)
+        
+        self.choices = (
+            [(int(v), choices_dict.get(int(v))) for v in values]
+            or self.choices
+        )
 
     def prepare_value(self, value):
         self._fix_choices(value)
@@ -48,14 +52,14 @@ def generate_report_create_form(model, col_initial=None):
     return generate_filterset_form(
         model,
         fields={
-            "columns": forms.MultipleChoiceField(
+            "columns": OrderedModelMultipleChoiceField(
                 widget=forms.MultipleChoiceField.widget(
                     attrs={"class": "selectize-field"}
                 ),
                 required=True,
                 label=_("Columns"),
                 initial=col_initial,
-                choices=list(get_model_columns(model).items()),
+                choices=list((k, v) for k, v in get_model_columns(model, verbose=True).items()),
             ),
         },
     )

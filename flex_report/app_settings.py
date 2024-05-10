@@ -130,5 +130,9 @@ class AppSettings(object):
     def REALTIME_QUICKSEARCH(self):
         return self._settings("REALTIME_QUICKSEARCH", True)
 
+    @property
+    def MODEL_EXPORT_KWARGS_FUNC_NAME(self):
+        return self._settings("MODEL_EXPORT_KWARGS_FUNC_NAME", "flex_export_kwargs")
+
 
 app_settings = AppSettings()
