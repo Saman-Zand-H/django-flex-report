@@ -384,7 +384,7 @@ class ReportExportView(QuerySetExportMixin, ReportViewBase):
 
         self.export_qs = self.report_qs
         self.export_headers = columns
-        self.export_kwargs = getattr(self.report_model, app_settings.MODEL_EXPORT_KWARGS_FUNC_NAME, {})()
+        self.export_kwargs = getattr(self.report_model, app_settings.MODEL_EXPORT_KWARGS_FUNC_NAME, lambda *args, **kwargs: {})()
 
         return super().get(*args, **kwargs)
 
