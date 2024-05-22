@@ -27,7 +27,7 @@ class OrderedModelMultipleChoiceField(forms.MultipleChoiceField):
         choices_dict = OrderedDict(self.choices)
         
         self.choices = (
-            [(int(v), choices_dict.get(int(v))) for v in values]
+            [(int(v), choices_dict.get(int(v))) for v in values or []]
             or self.choices
         )
 
