@@ -39,6 +39,7 @@ from .utils import (
     increment_string_suffix,
     set_template_as_page_default,
     get_column_type,
+    get_model_columns,
     FieldTypes,
 )
 
@@ -299,15 +300,12 @@ class TemplateUpdateView(UpdateView, TemplateUpsertViewBase):
             super(TemplateUpsertViewBase, self).get_form_class(),
             generate_report_create_form(
                 self.template_model,
-                list(self.template_object.columns.values_list("id", flat=True)),
+                tuple(self.template_object.columns.values_list("id", flat=True))
             ),
         ]
 
     def get_initial(self):
-        template_columns = tuple(self.template_object.columns.values_list("pk", flat=True))
-        
         return self.request.POST or {
-            "columns": template_columns,
             **self.object.filters,
             **{f: getattr(self.object, f) for f in self.fields},
         }

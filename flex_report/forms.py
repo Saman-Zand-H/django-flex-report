@@ -25,17 +25,23 @@ model_user_path_formset = forms.formset_factory(
 class OrderedModelMultipleChoiceField(forms.MultipleChoiceField):
     def _fix_choices(self, values):
         choices_dict = OrderedDict(self.choices)
+        values = list(values or [])
+        new_choices = map(int, values + list(dict(self.choices).keys()))
         
         self.choices = (
-            [(int(v), choices_dict.get(int(v))) for v in values or []]
+            [(int(v), choices_dict.get(int(v))) for v in new_choices]
             or self.choices
         )
 
     def prepare_value(self, value):
+        value = value or self.initial
+        
         self._fix_choices(value)
         return super().prepare_value(value)
 
     def clean(self, value):
+        value = value or self.initial
+        
         qs = super().clean(value)
         self._fix_choices(qs)
         return qs
@@ -49,6 +55,9 @@ def get_form(form_name: str):
 
 
 def generate_report_create_form(model, col_initial=None):
+    choices = list((k, v) for k, v in get_model_columns(model, verbose=True).items())
+    print(col_initial)
+    
     return generate_filterset_form(
         model,
         fields={
@@ -59,7 +68,7 @@ def generate_report_create_form(model, col_initial=None):
                 required=True,
                 label=_("Columns"),
                 initial=col_initial,
-                choices=list((k, v) for k, v in get_model_columns(model, verbose=True).items()),
+                choices=choices,
             ),
         },
     )
