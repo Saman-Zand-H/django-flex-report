@@ -530,7 +530,7 @@ class ExportXLS(BaseExportFormat):
         sheet_name = str(self.get_export_kwargs().get("sheet_name", "default"))
         cell_fn = self.get_export_kwargs().get("cell_fn", self._default_cell_fn)
 
-        workbook = xlwt.Workbook(encoding="utf-8")
+        workbook = xlwt.Workbook(encoding="utf-8", style_compression=2)
         default_style = xlwt.XFStyle()
         sheet = workbook.add_sheet(
             sheet_name
