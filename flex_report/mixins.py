@@ -303,8 +303,8 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
 
         return self._format_used_filter(col_name, val) or val
 
-    def setup(self, request, *args, **kwargs):
-        super().setup(request, *args, **kwargs)
+    def dispatch(self, request, *args, **kwargs):
+        response = super().dispatch(request, *args, **kwargs)
 
         obj = self.template_object
         if not obj:
@@ -367,6 +367,8 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
                     if bool(v)
                 }
             )
+        
+        return response
 
     def get_used_filters(self, cleaned_data):
         return _(" and ").join(
