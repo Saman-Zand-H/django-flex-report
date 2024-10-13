@@ -53,17 +53,6 @@ def is_editor(user):
 
 
 @register.filter
-def has_report_access(user, obj):
-    return obj._meta.model.objects.filter(
-        Q(is_superuser=True)
-        | Q(creator=user)
-        | Q(users=user)
-        | Q(groups__in=user.groups.all())
-        | (Q(groups__isnull=True) & Q(users__isnull=True))
-    )
-
-
-@register.filter
 def get_verbose_name(obj, plural=False):
     assert hasattr(obj, "_meta") or isinstance(obj, QuerySet)
     if isinstance(obj, Model):

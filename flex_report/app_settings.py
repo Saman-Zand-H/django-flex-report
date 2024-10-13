@@ -85,7 +85,7 @@ class AppSettings(object):
     @property
     def DATA_TAGS(self):
         dflt = data_tags = {
-            models.ImageField: lambda v: f'<img src="{v}" height=100>',
+            models.ImageField: lambda v: f'<img src="{v}" height="100" loading="lazy">',
             models.FileField: lambda v: f'<a href="{v}" download="{(v_name:=v.split('/')[-1])}">{v_name}</a>',
             models.BooleanField: lambda v: f'<i class="material-icons-outlined">{v and 'check_circle' or 'cancel'}</i>',
             "default": lambda v: f"<span>{v}</span>",

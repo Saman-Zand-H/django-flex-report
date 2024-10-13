@@ -1,11 +1,9 @@
 import contextlib
-from operator import call
 from collections import OrderedDict
 
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import transaction
-from django.core.exceptions import FieldError, PermissionDenied
-from django.db.models import Q
+from django.core.exceptions import PermissionDenied
 from django.http import Http404
 from django.shortcuts import redirect
 from django.urls import reverse, reverse_lazy
@@ -39,24 +37,11 @@ from .utils import (
     increment_string_suffix,
     set_template_as_page_default,
     get_column_type,
-    get_model_columns,
     FieldTypes,
 )
 
 
 class BaseView(LoginRequiredMixin, View):
-    def get_queryset(self):
-        qs = super().get_queryset()
-        if self.request.user.is_superuser:
-            return qs
-
-        return qs.filter(
-            Q(creator=self.request.user)
-            | Q(users=self.request.user)
-            | Q(groups__in=self.request.user.groups.all())
-            | (Q(groups__isnull=True) & Q(users__isnull=True))
-        ).distinct()
-
     def get_object(self):
         qs = super().get_object(self.model.objects.all())
         if not qs:
@@ -73,7 +58,7 @@ BaseView = app_settings.BASE_VIEW or BaseView
 
 class ColumnCreateView(BaseView, CreateView):
     model = Column
-    fields = ["title", "searchable", "model", "users", "groups"]
+    fields = ["title", "searchable", "model"]
     template_name_suffix = "_form"
     success_url = reverse_lazy("flex_report:column:index")
 
@@ -101,7 +86,7 @@ column_list_view = ColumnListView.as_view()
 
 class ColumnUpdateView(BaseView, UpdateView):
     model = Column
-    fields = ["title", "searchable", "model", "users", "groups"]
+    fields = ["title", "searchable", "model"]
     template_name_suffix = "_form"
     success_url = reverse_lazy("flex_report:column:index")
 
@@ -274,7 +259,7 @@ class TemplateCreateCompleteView(FormView, TemplateUpsertViewBase):
 
     def get_context_data(self, **kwargs):
         return {
-            "meta_fields_name": ["columns", "users", "groups"],
+            "meta_fields_name": ["columns"],
             **super().get_context_data(**kwargs),
         }
 

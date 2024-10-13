@@ -1,5 +1,4 @@
 from django.conf import settings
-from django.contrib.auth.models import Group
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -20,16 +19,6 @@ from .constants import FieldTypes
 class TablePage(models.Model):
     title = models.CharField(max_length=200, verbose_name=_("Title"))
     url_name = models.CharField(max_length=200, verbose_name=_("URL Name"))
-    users = models.ManyToManyField(
-        settings.AUTH_USER_MODEL,
-        related_name="accessed_pages",
-        blank=True,
-    )
-    groups = models.ManyToManyField(
-        Group,
-        related_name="accessed_pages",
-        blank=True,
-    )
 
     @property
     def url(self):
@@ -53,16 +42,6 @@ class Column(models.Model):
         related_name="created_columns",
         blank=True,
         null=True,
-    )
-    users = models.ManyToManyField(
-        settings.AUTH_USER_MODEL,
-        related_name="accessed_columns",
-        blank=True,
-    )
-    groups = models.ManyToManyField(
-        Group,
-        related_name="accessed_columns",
-        blank=True,
     )
     model = models.ForeignKey(
         ContentType,
@@ -191,15 +170,9 @@ class TableButton(models.Model):
         null=True,
         related_name="buttons",
     )
-    users = models.ManyToManyField(
-        settings.AUTH_USER_MODEL,
-        related_name="accessed_buttons",
-        blank=True,
-    )
-    groups = models.ManyToManyField(
-        Group,
-        related_name="accessed_buttons",
-        blank=True,
+    is_table = models.BooleanField(
+        verbose_name=_("Is Table"),
+        default=False,
     )
 
     @property
@@ -274,16 +247,6 @@ class Template(models.Model):
     created_date = jDateTimeField(
         auto_now_add=True,
         verbose_name=_("Created Date"),
-    )
-    users = models.ManyToManyField(
-        settings.AUTH_USER_MODEL,
-        related_name="accessed_templates",
-        blank=True,
-    )
-    groups = models.ManyToManyField(
-        Group,
-        related_name="accessed_templates",
-        blank=True,
     )
     modified_date = jDateTimeField(auto_now=True, verbose_name=_("Modified Date"))
     status = models.CharField(
