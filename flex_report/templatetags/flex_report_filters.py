@@ -9,7 +9,7 @@ from django.contrib.auth.models import Group
 from django.contrib.contenttypes.models import ContentType
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
-from django.db.models import Model, Q, QuerySet
+from django.db.models import Model, QuerySet
 from django.urls import reverse
 from django.urls.exceptions import NoReverseMatch
 from django.utils.safestring import mark_safe
@@ -157,7 +157,7 @@ def get_report_button_url(record, button):
         url = reverse(
             button.url_name,
             kwargs=url_kwargs
-            | {"ct_pk": ContentType.objects.get_for_model(record._meta.model).pk},
+            | {"ct_pk": record and ContentType.objects.get_for_model(record._meta.model).pk},
         )
 
     with contextlib.suppress(NoReverseMatch):
