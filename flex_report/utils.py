@@ -574,6 +574,14 @@ class ExportCsv(BaseExportFormat):
     format_slug = "csv"
     format_name = "CSV"
     format_ext = ".csv"
+    
+    def get_export_filename(self):
+        qs = self.get_export_qs()
+        if not self.export_filename and isinstance(qs, QuerySet):
+            with override("en"):
+                return f"{qs.model._meta.verbose_name_plural}{self.format_ext}"
+
+        return f"{self.export_filename}{self.format_ext}"
 
     def export(self):
         headers_name = self.get_export_headers()

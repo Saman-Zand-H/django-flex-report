@@ -319,7 +319,7 @@ class TemplateUpdateView(UpdateView, TemplateUpsertViewBase):
 template_update_view = TemplateUpdateView.as_view()
 
 
-class ReportViewBase(BaseView, TablePageMixin, DetailView):
+class ReportViewBase(TablePageMixin, BaseView, DetailView):
     model = Template
     is_page_table = False
 
@@ -348,7 +348,10 @@ general_qs_export_view = GeneralQuerySetExportView.as_view()
 
 class ReportExportView(QuerySetExportMixin, ReportViewBase):
     def get(self, *args, **kwargs):
-        self.export_file_name = get_report_filename(self.template_object)
+        if not self.template_object.has_export:
+            return Http404("Export is not allowed for this template")
+        
+        self.export_filename = get_report_filename(self.template_object)
 
         columns = OrderedDict()
         for col in self.template_columns:
