@@ -142,9 +142,7 @@ class TemplateCreateInitView(BaseView, CreateView):
         return super(ModelFormMixin, self).form_valid(form)
 
     def get_success_url(self):
-        return reverse(
-            "flex_report:template:create_complete", kwargs={"pk": self.object.pk}
-        )
+        return reverse("flex_report:template:create_complete", kwargs={"pk": self.object.pk})
 
 
 template_create_init_view = TemplateCreateInitView.as_view()
@@ -206,9 +204,7 @@ class TemplateUpsertViewBase(BaseView, TemplateObjectMixin, DetailView):
         super().setup(request, *args, **kwargs)
         self.object = self.get_object()
         self.template_model = model = self.object.model.model_class()
-        self.filter_class = generate_filterset_from_model(
-            model, self.get_form_classes()
-        )
+        self.filter_class = generate_filterset_from_model(model, self.get_form_classes())
         self.filter = self.filter_class(self.get_initial())
         self.columns = self.template_object.columns.all()
 
@@ -224,10 +220,7 @@ class TemplateUpsertViewBase(BaseView, TemplateObjectMixin, DetailView):
 
         def clean(self):
             cleaned_data = old_clean(self)
-            if (
-                hasattr(self, "instance")
-                and cleaned_data.get("page") != self.instance.page
-            ):
+            if hasattr(self, "instance") and cleaned_data.get("page") != self.instance.page:
                 self.instance.is_page_default = False
             return cleaned_data
 
@@ -284,8 +277,7 @@ class TemplateUpdateView(UpdateView, TemplateUpsertViewBase):
         return [
             super(TemplateUpsertViewBase, self).get_form_class(),
             generate_report_create_form(
-                self.template_model,
-                tuple(self.template_object.columns.values_list("id", flat=True))
+                self.template_model, tuple(self.template_object.columns.values_list("id", flat=True))
             ),
         ]
 
@@ -311,9 +303,7 @@ class TemplateUpdateView(UpdateView, TemplateUpsertViewBase):
         return reverse("flex_report:template:index")
 
     def template_not_ready(self):
-        return redirect(
-            "flex_report:template:create_complete", pk=self.template_object.pk
-        )
+        return redirect("flex_report:template:create_complete", pk=self.template_object.pk)
 
 
 template_update_view = TemplateUpdateView.as_view()
@@ -331,9 +321,7 @@ class ReportView(ReportViewBase):
     template_name = "flex_report/view_page.html"
 
     def template_not_ready(self):
-        return redirect(
-            "flex_report:template:create_complete", pk=self.template_object.pk
-        )
+        return redirect("flex_report:template:create_complete", pk=self.template_object.pk)
 
 
 report_view = ReportView.as_view()
@@ -350,29 +338,29 @@ class ReportExportView(QuerySetExportMixin, ReportViewBase):
     def get(self, *args, **kwargs):
         if not self.template_object.has_export:
             return Http404("Export is not allowed for this template")
-        
+
         self.export_filename = get_report_filename(self.template_object)
 
         columns = OrderedDict()
         for col in self.template_columns:
             if get_column_type(self.report_model, col.title) != FieldTypes.dynamic:
-                columns[col.title] = str(
-                    get_column_verbose_name(self.report_model, col.title)
-                )
+                columns[col.title] = str(get_column_verbose_name(self.report_model, col.title))
                 continue
 
             columns.update(
-                {
-                    subfield: str(subfield.get_verbose_name())
-                    for subfield in col.get_dynamic_obj().unpack_field()
-                }
+                {subfield: str(subfield.get_verbose_name()) for subfield in col.get_dynamic_obj().unpack_field()}
             )
 
-        self.export_qs = self.report_qs
         self.export_headers = columns
-        self.export_kwargs = getattr(self.report_model, app_settings.MODEL_EXPORT_KWARGS_FUNC_NAME, lambda *args, **kwargs: {})()
+        self.export_kwargs = getattr(
+            self.report_model, app_settings.MODEL_EXPORT_KWARGS_FUNC_NAME, lambda *args, **kwargs: {}
+        )()
 
         return super().get(*args, **kwargs)
+
+    def get_export_qs(self):
+        self.setup_report_qs()
+        return self.report_qs
 
     def template_not_ready(self):
         raise Http404

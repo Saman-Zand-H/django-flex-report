@@ -43,8 +43,7 @@ class PaginationMixin(View):
         page = self.request.GET.get(self.page_keyword, 1)
         per_page = (
             p
-            if (p := self.request.GET.get(self.per_page_ketyword, self.default_page))
-            and p in map(str, self.pages)
+            if (p := self.request.GET.get(self.per_page_ketyword, self.default_page)) and p in map(str, self.pages)
             else self.default_page
         )
         try:
@@ -147,10 +146,7 @@ class QuerySetExportMixin(View):
         raise HttpResponseForbidden(content="403 Forbidden")
 
     def dispatch(self, *args, **kwargs):
-        if (
-            not (format_ := self.request.GET.get("format", "").lower())
-            or format_ not in export_format.formats.keys()
-        ):
+        if not (format_ := self.request.GET.get("format", "").lower()) or format_ not in export_format.formats.keys():
             return HttpResponseBadRequest()
 
         self.export_format = format_
@@ -167,9 +163,7 @@ class QuerySetExportMixin(View):
                 )
             return format_(request=self.request, user=self.request.user)
         except KeyError as e:
-            raise NotImplementedError(
-                f"The wanted format '{self.export_format}' isn't handled."
-            ) from e
+            raise NotImplementedError(f"The wanted format '{self.export_format}' isn't handled.") from e
 
     def get(self, *args, **kwargs):
         format_ = self.get_exporter()
@@ -212,27 +206,22 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
 
     def get_template(self):
         page_template = self.request.GET.get(self.page_template_keyword)
-        if page_template and (
-            template := self.get_page_templates().filter(pk=page_template)
-        ).exists():
+        if page_template and (template := self.get_page_templates().filter(pk=page_template)).exists():
             return template.first()
-        
-        return (
-            self.get_page_templates().filter(is_page_default=True)
-            or self.get_page_templates()
-        ).first()
+
+        return (self.get_page_templates().filter(is_page_default=True) or self.get_page_templates()).first()
 
     def get_filters(self):
         initials = self.get_initials()
 
-        self.template_filters = generate_filterset_from_model(
-            self.report_model, self.get_form_classes()
-        )(self.template_object.filters or {})
+        self.template_filters = generate_filterset_from_model(self.report_model, self.get_form_classes())(
+            self.template_object.filters or {}
+        )
         self.filters = generate_filterset_from_model(
             self.report_model,
             self.get_form_classes(),
         )(initials)
-        
+
         self.quicksearch = generate_quicksearch_filterset_from_model(
             self.report_model, list(self.template_searchable_fields.values())
         )(initials)
@@ -249,11 +238,7 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
         accessed_paths = {
             path_name: path_dict
             for path_name, path in paths.items()
-            if (
-                path_dict := {
-                    path: call(path_func, request=self.request).get(path_name)
-                }
-            ).get(path)
+            if (path_dict := {path: call(path_func, request=self.request).get(path_name)}).get(path)
         }
 
         if not len(accessed_paths):
@@ -269,14 +254,10 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
 
         accessed_path, accessed_val = accessed_paths[accessed_path].popitem()
         if not any(map(lambda op: op in accessed_path, LOGICAL_OPERATORS)):
-            self.report_qs = self.report_qs.filter(
-                **{accessed_path: accessed_val}
-            ).distinct()
+            self.report_qs = self.report_qs.filter(**{accessed_path: accessed_val}).distinct()
             return
 
-        self.report_qs = self.report_qs.filter(
-            string_to_q(accessed_path, accessed_val)
-        ).distinct()
+        self.report_qs = self.report_qs.filter(string_to_q(accessed_path, accessed_val)).distinct()
 
     def _format_used_filter(self, col_name, val):
         formats = {
@@ -303,18 +284,7 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
 
         return self._format_used_filter(col_name, val) or val
 
-    def setup(self, request, *args, **kwargs):
-        super().setup(request, *args, **kwargs)
-
-        obj = self.template_object
-        if not obj:
-            self.have_template = False
-            return
-
-        self.report_model = obj.model.model_class()
-        self.template_columns = get_template_columns(obj, as_dict=False)
-        self.template_searchable_fields = get_template_columns(obj, searchables=True)
-
+    def setup_report_qs(self):
         self.get_filters()
         self.report_qs = (
             self.template_filters.qs.distinct()
@@ -343,31 +313,35 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
                 )
             )
         ):
-            self.report_qs = self.template_filters.qs.distinct().filter(
-                pk__in=Subquery(
-                    (
-                        self.quicksearch.qs.distinct() & self.filters.qs.distinct()
-                    ).values("pk")
-                )
+            self.report_qs = self.report_qs.distinct().filter(
+                pk__in=Subquery((self.quicksearch.qs.distinct() & self.filters.qs.distinct()).values("pk"))
             )
 
-            self.report_qs = self.report_qs.distinct().order_by(
-                *self.report_model._meta.ordering or ["pk"]
-            )
+            self.report_qs = self.report_qs.distinct().order_by(*self.report_model._meta.ordering or ["pk"])
 
-            cleaned_data = (
-                self.quicksearch.form.cleaned_data | self.filters.form.cleaned_data
-            )
+            cleaned_data = self.quicksearch.form.cleaned_data | self.filters.form.cleaned_data
             self.used_filters = self.get_used_filters(
                 {
-                    get_col_verbose_name(
-                        self.report_model, k
-                    ): self.used_filter_format(k, v)
+                    get_col_verbose_name(self.report_model, k): self.used_filter_format(k, v)
                     for k, v in cleaned_data.items()
                     if bool(v)
                 }
             )
-        
+
+    def setup(self, request, *args, **kwargs):
+        super().setup(request, *args, **kwargs)
+
+        obj = self.template_object
+        if not obj:
+            self.have_template = False
+            return
+
+        self.report_model = obj.model.model_class()
+        self.template_columns = get_template_columns(obj, as_dict=False)
+        self.template_searchable_fields = get_template_columns(obj, searchables=True)
+
+        self.setup_report_qs()
+
     def get_used_filters(self, cleaned_data):
         return _(" and ").join(
             [
@@ -381,11 +355,9 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
         if initial.lower() in ["true", "false"]:
             return initial.lower() == "true"
 
-        if (initial.startswith("[") and initial.endswith("]")) or (
-            not initial.startswith("0") and initial.isnumeric()
-        ):
+        if (initial.startswith("[") and initial.endswith("]")) or (not initial.startswith("0") and initial.isnumeric()):
             return ast.literal_eval(initial)
-        
+
         return initial
 
     def get_initial_value(self, initial, *, key=""):
@@ -400,9 +372,7 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
         return {
             k: self.get_initial_value(v, key=k)
             for k, v in self.request.GET.dict().items()
-            if str(v)
-            and v.strip() not in self.ignore_search_values
-            and k.strip() not in self.ignore_search_keys
+            if str(v) and v.strip() not in self.ignore_search_values and k.strip() not in self.ignore_search_keys
         }
 
     def get_form_classes(self):
@@ -425,9 +395,7 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
             + self.template_object.buttons.count()
             + sum(
                 len(field.get_dynamic_obj().unpack_field())
-                for field in self.template_columns.filter(
-                    column_type=FieldTypes.dynamic
-                ).only("pk")
+                for field in self.template_columns.filter(column_type=FieldTypes.dynamic).only("pk")
             )
             + 1,
             "filters": self.filters,
@@ -443,16 +411,13 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
             "is_page_table": self.is_page_table,
             "have_template": self.have_template,
             "export_formats": [
-                {"name": format_.format_name, "slug": format_.format_slug}
-                for format_ in export_format.formats.values()
+                {"name": format_.format_name, "slug": format_.format_slug} for format_ in export_format.formats.values()
             ],
-            "page_title": getattr(
-                self.template_object.page, "title", self.template_object.title
-            ),
+            "page_title": getattr(self.template_object.page, "title", self.template_object.title),
         }
         return context
 
     def get_page_templates(self):
-        return Template.objects.filter(
-            page__url_name=self.request.resolver_match.view_name
-        ).order_by("-is_page_default")
+        return Template.objects.filter(page__url_name=self.request.resolver_match.view_name).order_by(
+            "-is_page_default"
+        )
