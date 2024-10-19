@@ -1,3 +1,3 @@
-__version__ = "0.8.14"
+__version__ = "0.8.17"
 
 get_version = lambda: __version__

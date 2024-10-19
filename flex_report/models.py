@@ -120,7 +120,7 @@ class TableButtonColor(models.Model):
 class TableButton(models.Model):
     title = models.CharField(
         verbose_name=_("title"),
-        max_length=50,
+        max_length=255,
         default="",
         unique=True,
     )

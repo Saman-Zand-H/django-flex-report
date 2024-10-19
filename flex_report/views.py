@@ -359,8 +359,7 @@ class ReportExportView(QuerySetExportMixin, ReportViewBase):
         return super().get(*args, **kwargs)
 
     def get_export_qs(self):
-        self.setup_report_qs()
-        return self.report_qs
+        return self.get_report_qs()
 
     def template_not_ready(self):
         raise Http404
