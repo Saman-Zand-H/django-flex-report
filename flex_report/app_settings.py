@@ -1,9 +1,11 @@
 import importlib
 
+from django_jalali.db import models as jmodels
 from phonenumber_field.modelfields import PhoneNumberField
+
+from django.apps import apps
 from django.conf import settings
 from django.db import models
-from django_jalali.db import models as jmodels
 
 
 def import_attribute(path):
@@ -39,8 +41,16 @@ class AppSettings(object):
         return get_setting(self.prefix + name, dflt)
 
     @property
+    def DATETIME_FIELD(self):
+        return import_callable(self._settings("DATETIME_FIELD_CALLBACK", "django.db.models.DateTimeField"))
+
+    @property
+    def DATE_FIELD_(self):
+        return self._settings("DATE_FIELD_CALLBACK", "django.db.models.DateField")
+
+    @property
     def FILTERSET_CLASS(self):
-        return import_callable(self._settings("FILTERSET_CLASS", "filterset.Filterset"))
+        return import_callable(self._settings("FILTERSET_CLASS", "flex_report.filterset.FilterSet"))
 
     @property
     def FORMS(self):
@@ -98,7 +108,7 @@ class AppSettings(object):
             data_tags = {k: DATA_TAGS.get(k, v) for k, v in dflt.items()}
 
         return data_tags
-    
+
     @property
     def MODEL_USER_PATH_FUNC_NAME(self):
         return self._settings("MODEL_USER_PATH_FUNC_NAME", "report_user_path")
@@ -134,6 +144,22 @@ class AppSettings(object):
     @property
     def MODEL_EXPORT_KWARGS_FUNC_NAME(self):
         return self._settings("MODEL_EXPORT_KWARGS_FUNC_NAME", "flex_export_kwargs")
+
+    @property
+    def MODEL_ADMINS(self):
+        dflt = model_admins = {
+            "Template": "flex_report.defaults.admin.TemplateAdmin",
+            "Column": "flex_report.defaults.admin.ColumnAdmin",
+            "TableButton": "flex_report.defaults.admin.TableButtonAdmin",
+            "TablePage": "flex_report.defaults.admin.TablePageAdmin",
+            "TableButtonColor": "flex_report.defaults.admin.TableButtonColorAdmin",
+            "TemplateSavedFilter": "flex_report.defaults.admin.TemplateSavedFilterAdmin",
+        }
+        if ADMINS := self._settings("MODEL_ADMINS", False):
+            assert isinstance(ADMINS, dict)
+            model_admins = {k: ADMINS.get(k, v) for k, v in dflt.items()}
+
+        return {apps.get_model("flex_report", k): import_callable(v) for k, v in model_admins.items()}
 
 
 app_settings = AppSettings()

@@ -1,31 +1,30 @@
 import ast
+import contextlib
 import mimetypes
-from operator import methodcaller, attrgetter
 from logging import getLogger
 
 from django.core.exceptions import PermissionDenied
-from django.db.models import Subquery
 from django.core.paginator import EmptyPage, Paginator
 from django.http import HttpResponseBadRequest, HttpResponseForbidden
 from django.shortcuts import HttpResponse
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import View
-
-from flex_report import export_format, BaseExportFormat
+from flex_report import BaseExportFormat, export_format
 
 from .app_settings import app_settings
-from .utils import get_col_verbose_name
 from .filterset import (
     generate_filterset_from_model,
     generate_quicksearch_filterset_from_model,
 )
+from .forms import SavedFilterSelectForm
 from .models import Template
 from .utils import (
-    generate_filterset_form,
-    get_template_columns,
-    get_choice_field_choices,
-    string_to_q,
     FieldTypes,
+    generate_filterset_form,
+    get_choice_field_choices,
+    get_col_verbose_name,
+    get_template_columns,
+    string_to_q,
 )
 
 logger = getLogger(__file__)
@@ -45,12 +44,12 @@ class PaginationMixin(View):
             if (p := self.request.GET.get(self.per_page_ketyword, self.default_page)) and p in map(str, self.pages)
             else self.default_page
         )
-        try:
+
+        with contextlib.suppress(EmptyPage):
             paginator = Paginator(self.get_paginate_qs(), per_page)
-            page_obj = paginator.page(page)
-        except EmptyPage:
-            page_obj = paginator.page(1)
-        return page_obj
+            return paginator.page(page)
+
+        return paginator.page(1)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -186,6 +185,7 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
     page_keyword = "report_page"
     per_page_keyword = "report_per_page"
     page_template_keyword = "report_template"
+    saved_filter_keyword = "saved_filter"
 
     is_page_table = True
     have_template = True
@@ -200,16 +200,19 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
     ignore_search_keys = ["report_template"]
 
     def get_template(self):
-        page_template = self.request.GET.get(self.page_template_keyword)
         templates = self.get_page_templates()
-        if page_template:
-            template = templates.filter(pk=page_template).first()
-            if template:
-                return template
-        return templates.filter(is_page_default=True).first() or templates.first()
+        default_template = templates.filter(is_page_default=True).first() or templates.first()
+        if not (page_template := self.request.GET.get(self.page_template_keyword)):
+            return default_template
 
-    def get_filters(self):
-        initials = self.get_initials()
+        if template := templates.filter(pk=page_template).first():
+            return template
+
+        return default_template
+
+    def setup_filters(self):
+        saved_filters = getattr(self.get_saved_filter(), "filters", {})
+        initials = saved_filters | self.get_initials()
         form_classes = self.get_form_classes()
 
         self.template_filters = generate_filterset_from_model(self.report_model, form_classes)(
@@ -217,30 +220,34 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
         )
         self.filters = generate_filterset_from_model(self.report_model, form_classes)(initials)
         self.quicksearch = generate_quicksearch_filterset_from_model(
-            self.report_model, list(self.template_searchable_fields.values())
+            self.report_model,
+            self.template_searchable_fields.values(),
         )(initials)
 
+    def _has_logical_operator(self, filter_path):
+        LOGICAL_OPERATORS = ["(", ")", "&", "|", "!="]
+        return any(op in filter_path for op in LOGICAL_OPERATORS)
+
     def apply_user_path(self, report_qs):
-        LOGICAL_OPERATORS = ["()", "&", "|", "!="]
-        path_func = getattr(self.report_model, app_settings.MODEL_USER_PATH_FUNC_NAME, lambda request: {})
+        access_handler = getattr(self.report_model, app_settings.MODEL_USER_PATH_FUNC_NAME, lambda request: {})
         accessed_paths = {
-            name: {path: path_func(self.request).get(name)}
+            name: {path: access_handler(self.request).get(name)}
             for name, path in (self.template_object.model_user_path or {}).items()
-            if path_func(self.request).get(name)
+            if access_handler(self.request).get(name)
         }
 
-        if accessed_paths:
-            accessed_path = next(iter(accessed_paths.keys()), "__all__")
-            if accessed_path != "__all__":
-                path, val = next(iter(accessed_paths[accessed_path].items()))
-                filter_func = string_to_q if any(op in path for op in LOGICAL_OPERATORS) else report_qs.filter
-                report_qs = filter_func(**{path: val}).distinct()
+        matches_paths = next(iter(accessed_paths.keys()), "__all__")
+        if not (accessed_paths and matches_paths):
+            return report_qs
 
-        return report_qs
+        filter_path, filter_value = next(iter(accessed_paths[matches_paths].items()))
+        filter_func = self._has_logical_operator(filter_path) and string_to_q or report_qs.filter
+
+        return filter_func(**{filter_path: filter_value}).distinct()
 
     def _format_used_filter(self, col_name, val):
-        formats = {**{k: "بله" for k in ["true", "True", True]}, **{k: "خیر" for k in ["false", "False", False]}}
-        return formats.get(val, dict(get_choice_field_choices(self.report_model, col_name)).get(val, str(val)))
+        formats = {**{k: _("Yes") for k in ["true", "True", True]}, **{k: "خیر" for k in ["false", "False", False]}}
+        return formats.get(val, dict(get_choice_field_choices(self.report_model, col_name) or []).get(val, str(val)))
 
     def used_filter_format(self, col_name, val):
         return (
@@ -249,8 +256,27 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
             else self._format_used_filter(col_name, val)
         )
 
+    def validate_filters(self, *filters_list):
+        return all(f.get_filters() and f.data and f.is_valid() for f in filters_list)
+
+    def get_saved_filter_form(self):
+        return SavedFilterSelectForm(
+            self.request.GET,
+            template=self.template_object,
+        )
+
+    def get_saved_filter(self):
+        if not self.get_template():
+            return {}
+
+        if not (saved_filter_form := self.get_saved_filter_form()).is_valid():
+            return saved_filter_form.initial.get(self.saved_filter_keyword, {})
+
+        return getattr(saved_filter_form, "cleaned_data", {}).get(self.saved_filter_keyword) or {}
+
     def get_report_qs(self):
-        self.get_filters()
+        self.setup_filters()
+
         report_qs = (
             self.template_filters.qs.distinct()
             if self.template_filters.get_filters()
@@ -258,14 +284,10 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
         )
         report_qs = self.apply_user_path(report_qs)
 
-        if (
-            all(map(methodcaller("get_filters"), [self.filters, self.quicksearch, self.template_filters]))
-            and all(map(attrgetter("data"), [self.filters, self.quicksearch, self.template_filters]))
-            and all(map(methodcaller("is_valid"), [self.filters, self.quicksearch, self.template_filters]))
-        ):
+        if self.validate_filters(self.filters, self.quicksearch, self.template_filters):
             report_qs = (
                 report_qs.distinct()
-                .filter(pk__in=Subquery((self.quicksearch.qs.distinct() & self.filters.qs.distinct()).values("pk")))
+                .filter(pk__in=(self.quicksearch.qs.distinct() & self.filters.qs.distinct()).values("pk"))
                 .order_by(*self.report_model._meta.ordering or ["pk"])
             )
             cleaned_data = self.quicksearch.form.cleaned_data | self.filters.form.cleaned_data
@@ -281,9 +303,11 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
 
     def setup(self, request, *args, **kwargs):
         super().setup(request, *args, **kwargs)
+
         if not (obj := self.template_object):
             self.have_template = False
             return
+
         self.report_model = obj.model.model_class()
         self.template_columns = get_template_columns(obj, as_dict=False)
         self.template_searchable_fields = get_template_columns(obj, searchables=True)
@@ -326,11 +350,10 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
         return self.get_report_qs()
 
     def get_context_data(self, **kwargs):
-        if self.have_template:
-            context = super().get_context_data(**kwargs)
-        else:
+        if not self.have_template:
             return super(TemplateObjectMixin, self).get_context_data(**kwargs)
 
+        context = super().get_context_data(**kwargs)
         context["report"] = {
             "columns": self.template_columns,
             "columns_count": len(self.template_columns)
@@ -350,6 +373,7 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
             "initials": self.get_initials(),
             "pagination": self.pagination,
             "page_template_keyword": self.page_template_keyword,
+            "saved_filter_form": self.get_saved_filter_form(),
             "is_page_table": self.is_page_table,
             "have_template": self.have_template,
             "export_formats": [

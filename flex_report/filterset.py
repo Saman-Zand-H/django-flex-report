@@ -16,7 +16,6 @@ from .utils import (
     get_fields_lookups,
     get_model_filters,
     get_quicksearch_fields_lookups,
-    get_temporal_filter,
 )
 
 
@@ -59,7 +58,6 @@ class FilterSet(FilterSetBase):
                 filter_ = django_filters.ModelMultipleChoiceFilter
                 opts.update(widget=filter_.field_class.widget())
             case filter_ if filter_ in FILTERSET_DATE_FILTERS:
-                filter_ = get_temporal_filter(filter_)
                 opts.update(
                     widget=filter_.field_class.widget(
                         attrs={

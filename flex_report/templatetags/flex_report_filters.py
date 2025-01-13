@@ -1,6 +1,7 @@
 import contextlib
 import json
 import math
+from operator import call
 from typing import Iterable
 from urllib.parse import urlencode
 
@@ -13,15 +14,22 @@ from django.db.models import Model, QuerySet
 from django.urls import reverse
 from django.urls.exceptions import NoReverseMatch
 from django.utils.safestring import mark_safe
-
 from flex_report.app_settings import app_settings
 from flex_report.utils import (
+    get_col_verbose_name,
     get_column_cell,
     get_model_field,
-    get_col_verbose_name,
 )
 
 register = template.Library()
+
+
+@register.simple_tag
+def call_method(obj, method_name, *args, **kwargs):
+    with contextlib.suppress(AttributeError):
+        return call(getattr(obj, method_name), *args, **kwargs)
+
+    return mark_safe("&mdash;")
 
 
 @register.filter(name="enumerate")
@@ -30,9 +38,7 @@ def enum(iterable: Iterable):
 
 
 @register.inclusion_tag("flex_report/pagination.html", takes_context=True)
-def show_pagination(
-    context, pagination_context=None, *, link_attributes=None, scroll_tag=None
-):
+def show_pagination(context, pagination_context=None, *, link_attributes=None, scroll_tag=None):
     return {
         "request": context["request"],
         "link_attributes": link_attributes,
@@ -156,8 +162,7 @@ def get_report_button_url(record, button):
     with contextlib.suppress(NoReverseMatch):
         url = reverse(
             button.url_name,
-            kwargs=url_kwargs
-            | {"ct_pk": record and ContentType.objects.get_for_model(record._meta.model).pk},
+            kwargs=url_kwargs | {"ct_pk": record and ContentType.objects.get_for_model(record._meta.model).pk},
         )
 
     with contextlib.suppress(NoReverseMatch):

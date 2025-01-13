@@ -1,40 +1,40 @@
+import ast
 import contextlib
 import csv
 import datetime
 import io
 import json
 import re
-from django.utils.translation import override
-from django.utils.safestring import mark_safe
 from collections import OrderedDict
 from decimal import Decimal
-from django.db.models import QuerySet
 from functools import lru_cache, reduce
 from importlib import import_module
 from itertools import chain
-from operator import attrgetter, methodcaller, and_, or_
+from logging import getLogger
+from operator import and_, attrgetter, methodcaller, or_
 from typing import List
-from phonenumber_field.modelfields import PhoneNumberField
+
 import jdatetime
 import pandas as pd
 import xlwt
 from dateparser.calendars.jalali import JalaliCalendar
-from django import forms
-import ast
-from django.db.models import Q
-from logging import getLogger
-from django.contrib.contenttypes.models import ContentType
-from django.db import models
-from django.db.models.fields.related import ForeignObjectRel, RelatedField
-from django.urls import URLPattern, URLResolver, get_resolver
 from django_filters import FilterSet
 from django_filters.constants import ALL_FIELDS
 from django_filters.utils import LOOKUP_SEP, get_all_model_fields, get_model_field
 from djmoney.models import fields as money_fields
 from djmoney.money import Money
+from phonenumber_field.modelfields import PhoneNumberField
 from phonenumber_field.phonenumber import PhoneNumber
 
-from flex_report import BaseExportFormat, ReportModel, export_format, dynamic_field
+from django import apps, forms
+from django.contrib.contenttypes.models import ContentType
+from django.db import models
+from django.db.models import Q, QuerySet
+from django.db.models.fields.related import ForeignObjectRel, RelatedField
+from django.urls import URLPattern, URLResolver, get_resolver
+from django.utils.safestring import mark_safe
+from django.utils.translation import override
+from flex_report import BaseExportFormat, ReportModel, dynamic_field, export_format
 from flex_report.fields import FieldFileAbsoluteURL
 
 from .app_settings import app_settings
@@ -43,12 +43,19 @@ from .constants import (
     REPORT_CUSTOM_FIELDS_KEY,
     REPORT_EXCULDE_KEY,
     REPORT_FIELDS_KEY,
-    FieldTypes,
     DynamicSubField,
+    FieldTypes,
 )
 
-
 logger = getLogger(__name__)
+
+
+def transform_nulls(filters: dict) -> dict:
+    return {k: v for k, v in filters.items() if v not in [None, "", [], {}]}
+
+
+def fields_join(*fields):
+    return LOOKUP_SEP.join([(hasattr(field, "field") and field.field.name) or field for field in fields])
 
 
 def nested_getattr(obj, attr, *args, sep="."):
@@ -73,12 +80,6 @@ def increment_string_suffix(string):
         string,
     )
     return r[0] if r[1] else f"{string}1"
-
-
-def list_index_safe(l, v, default=None):
-    with contextlib.suppress(ValueError):
-        return l.index(v)
-    return default
 
 
 def get_all_subclasses(class_):
@@ -126,11 +127,16 @@ def get_project_urls():
 
         if not urls:
             return
-        l = urls[0]
-        if isinstance(l, URLPattern):
-            yield patterns + [str(l.pattern)], namespaces + [l.name], l.callback
-        elif isinstance(l, URLResolver):
-            yield from getter(l.url_patterns, patterns + [str(l.pattern)], namespaces + [l.namespace])
+
+        url_component = urls[0]
+        if isinstance(url_component, URLPattern):
+            yield patterns + [str(url_component.pattern)], namespaces + [url_component.name], url_component.callback
+        elif isinstance(url_component, URLResolver):
+            yield from getter(
+                url_component.url_patterns,
+                patterns + [str(url_component.pattern)],
+                namespaces + [url_component.namespace],
+            )
         yield from getter(urls[1:], patterns, namespaces)
 
     for pattern in getter(get_resolver().url_patterns):
@@ -198,7 +204,10 @@ def fields_to_field_name(fields_lookups):
     and returns a dict where the keys are the name of fields
     and the values are the list of lookup expressions.
     """
-    return {f if isinstance(f, str) else get_field_name(f): l for f, l in fields_lookups.items()}
+    return {
+        field_name if isinstance(field_name, str) else get_field_name(field_name): lookup
+        for field_name, lookup in fields_lookups.items()
+    }
 
 
 def field_to_db_field(model, field):
@@ -586,16 +595,6 @@ def get_report_filename(template):
     return f"{template.title}_{jdatetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
 
 
-def get_temporal_filter(filter_cls):
-    class BaseTemporalField(filter_cls.field_class):
-        def to_python(self, value):
-            if value and "T" not in value:
-                value = JalaliCalendar(value).get_date()["date_obj"]
-            return super().to_python(value)
-
-    return type(filter_cls.__name__, (filter_cls,), {"field_class": BaseTemporalField})
-
-
 def fix_ordered_choice_field_values(choices, values):
     return (
         sorted(
@@ -700,7 +699,7 @@ class QBuilder(ast.NodeVisitor):
             raise ValueError("Only equality and inequality comparisons are supported")
 
 
-def string_to_q(q_str: str, q_vals: dict[str, str] = {}):
+def string_to_q(q_str: str, q_vals: dict[str, str] = {}) -> Q:
     """
     Takes a string that implements logics using parenthesis, ||, &&, and !=
     and ends in ='%(val_name)s', uses q_vals to replace val_name with the value of the key,
@@ -716,9 +715,7 @@ def string_to_q(q_str: str, q_vals: dict[str, str] = {}):
     tree = ast.parse(q_str, mode="eval")
 
     builder = QBuilder()
-    q_obj = builder.visit(tree.body)
-
-    return q_obj
+    return builder.visit(tree.body)
 
 
 def get_related_property(model, field_name):
