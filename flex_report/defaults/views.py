@@ -251,6 +251,7 @@ class TemplateSavedFilterCreateView(FormView, TemplateUpsertViewBase):
         TemplateSavedFilter.objects.create(
             template=self.template_object,
             title=form.cleaned_data.get("title"),
+            slug=form.cleaned_data.get("slug"),
             filters=data.get("filters"),
             creator=self.request.user if self.request.user.is_authenticated else None,
         )

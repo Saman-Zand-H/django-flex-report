@@ -62,6 +62,7 @@ def generate_report_saved_filter_form(template: Template):
         template.model,
         fields={
             "title": forms.CharField(label=_("Title"), max_length=100),
+            "slug": forms.SlugField(label=_("Slug"), max_length=100),
         },
     )
 

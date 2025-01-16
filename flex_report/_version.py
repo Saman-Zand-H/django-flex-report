@@ -1,3 +1,3 @@
-__version__ = "0.9.3"
+__version__ = "0.9.4"
 
-get_version = lambda: __version__  # noqa
+get_version = lambda: __version__

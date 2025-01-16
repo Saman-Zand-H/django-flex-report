@@ -10,12 +10,14 @@ from django.db.models import Q
 from django.utils.translation import gettext_lazy as _
 
 from .app_settings import app_settings
-from .constants import FILTERSET_DATE_FILTERS
 from .utils import (
     generate_filterset_form,
     get_fields_lookups,
     get_model_filters,
     get_quicksearch_fields_lookups,
+    get_annotated_fields_lookups,
+    get_annotated_fields,
+    get_field,
 )
 
 
@@ -37,13 +39,25 @@ class CustomModelMultipleChoiceFilter(django_filters.ModelMultipleChoiceFilter):
 
 class FilterSet(FilterSetBase):
     form_classes = []
-
+    
     @classmethod
     def get_fields(cls):
         model = cls._meta.model
         fields, exclude = get_model_filters(model)
         cls._meta.fields = fields and get_fields_lookups(model, fields)
         cls._meta.exclude = exclude and get_fields_lookups(model, exclude)
+        
+        for annotation_name, field_type in get_annotated_fields(model).items():
+            annotation_field = get_field(model, annotation_name).output_field
+            defaults = {
+                "field_name": annotation_name,
+                "label": annotation_name.replace("_", " ").title(),
+                "lookup_expr": get_annotated_fields_lookups(model).get(annotation_name, ["exact"])[0],
+            }
+            filter_class, opts = cls.filter_for_lookup(annotation_field, field_type)
+            defaults.update(opts)
+            cls.declared_filters[annotation_name] = filter_class(**defaults)
+            
         return super().get_fields()
 
     @classmethod
@@ -57,16 +71,6 @@ class FilterSet(FilterSetBase):
             case django_filters.ModelChoiceFilter:
                 filter_ = django_filters.ModelMultipleChoiceFilter
                 opts.update(widget=filter_.field_class.widget())
-            case filter_ if filter_ in FILTERSET_DATE_FILTERS:
-                opts.update(
-                    widget=filter_.field_class.widget(
-                        attrs={
-                            "class": "date-picker-input",
-                            "autofill": "off",
-                            "autocomplete": "off",
-                        }
-                    )
-                )
             case _ if issubclass(filter_, django_filters.BaseInFilter):
                 filter_ = CustomModelMultipleChoiceFilter
                 opts.update(widget=filter_.field_class.widget())
