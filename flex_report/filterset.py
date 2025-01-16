@@ -5,6 +5,7 @@ import django_filters
 from django_filters.filters import LOOKUP_SEP
 from django_filters import FilterSet as FilterSetBase
 
+from django_filters.conf import DEFAULTS
 from django import forms
 from django.db.models import Q
 from django.utils.translation import gettext_lazy as _
@@ -49,15 +50,17 @@ class FilterSet(FilterSetBase):
         
         for annotation_name, field_type in get_annotated_fields(model).items():
             annotation_field = get_field(model, annotation_name).output_field
-            defaults = {
-                "field_name": annotation_name,
-                "label": annotation_name.replace("_", " ").title(),
-                "lookup_expr": get_annotated_fields_lookups(model).get(annotation_name, ["exact"])[0],
-            }
-            filter_class, opts = cls.filter_for_lookup(annotation_field, field_type)
-            defaults.update(opts)
-            cls.declared_filters[annotation_name] = filter_class(**defaults)
-            
+            for lookup in get_annotated_fields_lookups(model).get(annotation_name, ["exact"]):
+                field_name = LOOKUP_SEP.join([annotation_name, lookup])
+                defaults = {
+                    "field_name": annotation_name,
+                    "label": " ".join(str(DEFAULTS.get("VERBOSE_LOOKUPS", {}).get(field_name_part, field_name_part)) for field_name_part in field_name.split(LOOKUP_SEP)).replace("_", " ").title(),
+                    "lookup_expr": lookup,
+                }
+                filter_class, opts = cls.filter_for_lookup(annotation_field, field_type)
+                defaults.update(opts)
+                cls.declared_filters[field_name] = filter_class(**defaults)
+                
         return super().get_fields()
 
     @classmethod
