@@ -12,6 +12,7 @@ REPORT_FIELDS_KEY = "flex_report_search_fields"
 REPORT_EXCULDE_KEY = "flex_report_search_exclude"
 REPORT_COLUMNS_EXCULDE_KEY = "flex_report_columns_exclude"
 REPORT_CUSTOM_FIELDS_KEY = "flex_report_custom_fields"
+REPORT_CUSTOM_MANAGER = "flex_report_custom_manager"
 
 REPORT_CELL_STYLE_MAP = (
     (datetime.datetime, xlwt.easyxf(num_format_str="YYYY/MM/DD HH:MM")),

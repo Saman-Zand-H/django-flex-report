@@ -44,6 +44,7 @@ from .constants import (
     REPORT_FIELDS_KEY,
     DynamicSubField,
     FieldTypes,
+    REPORT_CUSTOM_MANAGER
 )
 
 logger = getLogger(__name__)
@@ -64,6 +65,11 @@ def nested_getattr(obj, attr, *args, sep="."):
         return getattr(obj, attr, *args)
 
     return reduce(_getattr, [obj] + attr.split(sep))
+
+
+def get_model_manager(model):
+    return getattr(model, REPORT_CUSTOM_MANAGER, model.objects)
+
 
 
 def encode_str_dict(d: dict):
@@ -347,7 +353,7 @@ def get_annotated_fields(model: Model):
     for (
         annotation_name,
         annotation_type,
-    ) in model.objects.none().query.annotations.items():
+    ) in get_model_manager(model).none().query.annotations.items():
         fields[annotation_name] = annotation_type
         annotation_type.name = annotation_name
 

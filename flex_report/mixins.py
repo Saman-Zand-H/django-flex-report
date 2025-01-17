@@ -3,6 +3,7 @@ import contextlib
 import mimetypes
 from logging import getLogger
 
+from .utils import get_model_manager
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import EmptyPage, Paginator
 from django.http import HttpResponseBadRequest, HttpResponseForbidden
@@ -280,7 +281,7 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
         report_qs = (
             self.template_filters.qs.distinct()
             if self.template_filters.get_filters()
-            else self.report_model.objects.all()
+            else get_model_manager(self.report_model).all()
         )
         report_qs = self.apply_user_path(report_qs)
 

@@ -3,7 +3,7 @@ from operator import or_
 
 import django_filters
 from django_filters.filters import LOOKUP_SEP
-from django_filters import FilterSet as FilterSetBase
+from django_filters import FilterSet as BaseFilterSetBase
 
 from django_filters.conf import DEFAULTS
 from django import forms
@@ -18,6 +18,7 @@ from .utils import (
     get_quicksearch_fields_lookups,
     get_annotated_fields_lookups,
     get_annotated_fields,
+    get_model_manager,
     get_field,
 )
 
@@ -26,6 +27,17 @@ class FilterSetMeta:
     def __init__(self, model, fields=[]):
         self.model = model
         self.searchable_fields = fields
+        
+        
+class FilterSetBase(BaseFilterSetBase):
+    def __init__(self, *args, **kwargs):
+        queryset = kwargs.get("queryset")
+        if not queryset:
+            queryset = get_model_manager(self.Meta.model).all()
+            
+        kwargs.update(queryset=queryset)
+        super().__init__(*args, **kwargs)
+
         
         
 class CustomModelMultipleChoiceFilter(django_filters.ModelMultipleChoiceFilter):
