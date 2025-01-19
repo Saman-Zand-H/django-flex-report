@@ -17,7 +17,9 @@ class OrderedModelMultipleChoiceField(forms.MultipleChoiceField):
         values = list(values or [])
         new_choices = map(int, values + list(dict(self.choices).keys()))
 
-        self.choices = [(int(v), choices_dict.get(int(v))) for v in new_choices] or self.choices
+        self.choices = [
+            (int(v), choices_dict.get(int(v))) for v in new_choices
+        ] or self.choices
 
     def prepare_value(self, value):
         value = value or self.initial
@@ -47,7 +49,9 @@ def generate_report_create_form(model, col_initial=None):
         model,
         fields={
             "columns": OrderedModelMultipleChoiceField(
-                widget=forms.MultipleChoiceField.widget(attrs={"class": "selectize-field"}),
+                widget=forms.MultipleChoiceField.widget(
+                    attrs={"class": "selectize-field"}
+                ),
                 required=True,
                 label=_("Columns"),
                 initial=col_initial,
@@ -62,7 +66,6 @@ def generate_report_saved_filter_form(template: Template):
         template.model,
         fields={
             "title": forms.CharField(label=_("Title"), max_length=100),
-            "slug": forms.SlugField(label=_("Slug"), max_length=100),
         },
     )
 
@@ -72,7 +75,9 @@ class SavedFilterSelectForm(forms.Form):
         queryset=TemplateSavedFilter.objects.none(),
         label=_("Saved Filter"),
         required=False,
-        widget=forms.Select(attrs={"class": "saved-filter-select", "onchange": "this.form.submit()"}),
+        widget=forms.Select(
+            attrs={"class": "saved-filter-select", "onchange": "this.form.submit()"}
+        ),
     )
 
     def __init__(self, *args, **kwargs):
@@ -88,12 +93,16 @@ class SavedFilterSelectForm(forms.Form):
 
 
 def generate_column_create_form(form):
-    form.fields["model"].queryset = ContentType.objects.filter(pk__in=[m.pk for m in get_report_models().values()])
+    form.fields["model"].queryset = ContentType.objects.filter(
+        pk__in=[m.pk for m in get_report_models().values()]
+    )
     return get_form("CREATE_COLUMN")(form)
 
 
 def generate_template_create_form(form, order=None):
-    form.fields["model"].queryset = ContentType.objects.filter(pk__in=[m.pk for m in get_report_models().values()])
+    form.fields["model"].queryset = ContentType.objects.filter(
+        pk__in=[m.pk for m in get_report_models().values()]
+    )
     form.fields["type"] = forms.ChoiceField(
         label=_("Type"),
         choices=TemplateTypeChoices.choices,

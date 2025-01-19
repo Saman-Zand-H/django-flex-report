@@ -1,6 +1,6 @@
 import datetime
-from typing import Iterable, Any, List
 from abc import abstractmethod
+from typing import List
 
 import django_filters
 import xlwt
@@ -112,18 +112,6 @@ class BaseExportFormat:
 
     def __str__(self):
         return self.format_name
-
-    @classmethod
-    @property
-    @abstractmethod
-    def format_slug(cls):
-        raise NotImplementedError
-
-    @classmethod
-    @property
-    @abstractmethod
-    def format_name(cls):
-        raise NotImplementedError
 
     @classmethod
     def register(cls, format_):

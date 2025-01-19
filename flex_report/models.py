@@ -1,6 +1,3 @@
-from django_better_admin_arrayfield.models.fields import ArrayField
-from sortedm2m.fields import SortedManyToManyField
-
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
@@ -8,6 +5,9 @@ from django.db import models
 from django.db.models import F
 from django.template.defaultfilters import truncatechars
 from django.utils.translation import gettext_lazy as _
+from django_better_admin_arrayfield.models.fields import ArrayField
+from sortedm2m.fields import SortedManyToManyField
+
 from flex_report import BaseDynamicField, dynamic_field, report_model
 
 from .app_settings import app_settings
@@ -69,22 +69,37 @@ class Column(models.Model):
 
     def clean(self):
         if (
-            (column_type := get_column_type(self.model, self.title)) == FieldTypes.dynamic
+            (column_type := get_column_type(self.model, self.title))
+            == FieldTypes.dynamic
             and (dynamic_model := self.get_dynamic_obj().model)
             and self.model.model_class() != dynamic_model
         ):
             raise ValidationError(
                 {
-                    "title": _("This dynamic column has been registered for another model, which is %(title)s.")
+                    "title": _(
+                        "This dynamic column has been registered for another model, which is %(title)s."
+                    )
                     % {"title": dynamic_model}
                 }
             )
 
         if column_type and not is_field_valid(self.model.model_class(), self.title):
-            raise ValidationError({"title": _("The field name is not valid. It should be a field on the model.")})
-        if self.searchable and not is_field_valid(self.model.model_class(), self.title, as_filter=True):
             raise ValidationError(
-                {"searchable": _("This field is a non-db field and is not allowed to be used for searching.")}
+                {
+                    "title": _(
+                        "The field name is not valid. It should be a field on the model."
+                    )
+                }
+            )
+        if self.searchable and not is_field_valid(
+            self.model.model_class(), self.title, as_filter=True
+        ):
+            raise ValidationError(
+                {
+                    "searchable": _(
+                        "This field is a non-db field and is not allowed to be used for searching."
+                    )
+                }
             )
 
     class Meta:
@@ -172,10 +187,15 @@ class TableButton(models.Model):
             raise ValidationError({"title": "Title or icon is required."})
 
         if not (bool(self.event) ^ bool(self.url_name)):
-            raise ValidationError({"event": "Filling either of Event or URL Name is required."})
+            raise ValidationError(
+                {"event": "Filling either of Event or URL Name is required."}
+            )
 
     def __str__(self):
-        return f"{self.title} - {self.color.title} -> " f"{self.url_name or truncatechars(self.event, 15)}"
+        return (
+            f"{self.title} - {self.color.title} -> "
+            f"{self.url_name or truncatechars(self.event, 15)}"
+        )
 
 
 @report_model.register
@@ -261,7 +281,9 @@ class Template(models.Model):
         return self.title
 
     def get_queryset(self):
-        return self.model.model_class()._default_manager.filter(**transform_nulls(self.filters))
+        return self.model.model_class()._default_manager.filter(
+            **transform_nulls(self.filters)
+        )
 
     class Meta:
         verbose_name = _("Template")
@@ -269,7 +291,6 @@ class Template(models.Model):
 
 
 class TemplateSavedFilter(models.Model):
-    slug = models.SlugField(max_length=100, verbose_name=_("Slug"))
     title = models.CharField(max_length=100, verbose_name=_("Title"))
     filters = models.JSONField(verbose_name=_("Filters"), default=dict)
     template = models.ForeignKey(
@@ -296,4 +317,4 @@ class TemplateSavedFilter(models.Model):
     class Meta:
         verbose_name = _("Template Saved Filter")
         verbose_name_plural = _("Template Saved Filters")
-        unique_together = [("title", "template"), ("slug", "template")]
+        unique_together = [("title", "template")]

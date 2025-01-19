@@ -121,7 +121,9 @@ class TemplateCreateInitView(BaseView, CreateView):
         return super(ModelFormMixin, self).form_valid(form)
 
     def get_success_url(self):
-        return reverse("flex_report:template:create_complete", kwargs={"pk": self.object.pk})
+        return reverse(
+            "flex_report:template:create_complete", kwargs={"pk": self.object.pk}
+        )
 
 
 class TemplateCloneView(BaseView, FormMixin, SingleObjectMixin):
@@ -146,7 +148,9 @@ class TemplateCloneView(BaseView, FormMixin, SingleObjectMixin):
         return self.form_valid(None)
 
     def get_success_url(self):
-        return self.request.headers.get("Referer", reverse_lazy("flex_report:template:index"))
+        return self.request.headers.get(
+            "Referer", reverse_lazy("flex_report:template:index")
+        )
 
 
 class TemplateToggleDefaultView(BaseView, FormMixin, SingleObjectMixin):
@@ -174,7 +178,9 @@ class TemplateUpsertViewBase(BaseView, TemplateObjectMixin, DetailView):
         super().setup(request, *args, **kwargs)
         self.object = self.get_object()
         self.template_model = model = self.object.model.model_class()
-        self.filter_class = generate_filterset_from_model(model, self.get_form_classes())
+        self.filter_class = generate_filterset_from_model(
+            model, self.get_form_classes()
+        )
         self.filter = self.filter_class(self.get_initial())
         self.columns = self.template_object.columns.all()
 
@@ -190,7 +196,10 @@ class TemplateUpsertViewBase(BaseView, TemplateObjectMixin, DetailView):
 
         def clean(self):
             cleaned_data = old_clean(self)
-            if hasattr(self, "instance") and cleaned_data.get("page") != self.instance.page:
+            if (
+                hasattr(self, "instance")
+                and cleaned_data.get("page") != self.instance.page
+            ):
                 self.instance.is_page_default = False
             return cleaned_data
 
@@ -242,7 +251,9 @@ class TemplateSavedFilterCreateView(FormView, TemplateUpsertViewBase):
         return [generate_report_saved_filter_form(self.template_object)]
 
     def get_success_url(self):
-        return reverse("flex_report:template:edit", kwargs={"pk": self.template_object.pk})
+        return reverse(
+            "flex_report:template:edit", kwargs={"pk": self.template_object.pk}
+        )
 
     def form_valid(self, form):
         cleaned_form = super(TemplateUpsertViewBase, self).form_valid(form)
@@ -251,7 +262,6 @@ class TemplateSavedFilterCreateView(FormView, TemplateUpsertViewBase):
         TemplateSavedFilter.objects.create(
             template=self.template_object,
             title=form.cleaned_data.get("title"),
-            slug=form.cleaned_data.get("slug"),
             filters=data.get("filters"),
             creator=self.request.user if self.request.user.is_authenticated else None,
         )
@@ -266,7 +276,8 @@ class TemplateUpdateView(UpdateView, TemplateUpsertViewBase):
         return [
             super(TemplateUpsertViewBase, self).get_form_class(),
             generate_report_create_form(
-                self.template_model, tuple(self.template_object.columns.values_list("id", flat=True))
+                self.template_model,
+                tuple(self.template_object.columns.values_list("id", flat=True)),
             ),
         ]
 
@@ -292,7 +303,9 @@ class TemplateUpdateView(UpdateView, TemplateUpsertViewBase):
         return reverse("flex_report:template:index")
 
     def template_not_ready(self):
-        return redirect("flex_report:template:create_complete", pk=self.template_object.pk)
+        return redirect(
+            "flex_report:template:create_complete", pk=self.template_object.pk
+        )
 
 
 class ReportViewBase(TablePageMixin, BaseView, DetailView):
@@ -307,7 +320,9 @@ class ReportView(ReportViewBase):
     template_name = "flex_report/view_page.html"
 
     def template_not_ready(self):
-        return redirect("flex_report:template:create_complete", pk=self.template_object.pk)
+        return redirect(
+            "flex_report:template:create_complete", pk=self.template_object.pk
+        )
 
 
 class GeneralQuerySetExportView(QuerySetExportMixin):
@@ -324,16 +339,23 @@ class ReportExportView(QuerySetExportMixin, ReportViewBase):
         columns = OrderedDict()
         for col in self.template_columns:
             if get_column_type(self.report_model, col.title) != FieldTypes.dynamic:
-                columns[col.title] = str(get_column_verbose_name(self.report_model, col.title))
+                columns[col.title] = str(
+                    get_column_verbose_name(self.report_model, col.title)
+                )
                 continue
 
             columns.update(
-                {subfield: str(subfield.get_verbose_name()) for subfield in col.get_dynamic_obj().unpack_field()}
+                {
+                    subfield: str(subfield.get_verbose_name())
+                    for subfield in col.get_dynamic_obj().unpack_field()
+                }
             )
 
         self.export_headers = columns
         self.export_kwargs = getattr(
-            self.report_model, app_settings.MODEL_EXPORT_KWARGS_FUNC_NAME, lambda *args, **kwargs: {}
+            self.report_model,
+            app_settings.MODEL_EXPORT_KWARGS_FUNC_NAME,
+            lambda *args, **kwargs: {},
         )()
 
         return super().get(*args, **kwargs)
