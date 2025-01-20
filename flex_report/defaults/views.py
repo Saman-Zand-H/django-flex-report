@@ -1,6 +1,7 @@
 import contextlib
 from collections import OrderedDict
 
+from django.shortcuts import  get_object_or_404
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
@@ -266,6 +267,28 @@ class TemplateSavedFilterCreateView(FormView, TemplateUpsertViewBase):
             creator=self.request.user if self.request.user.is_authenticated else None,
         )
         return cleaned_form
+    
+    
+class TemplateSavedFilterUpdateView(TemplateSavedFilterCreateView):
+    filter_pk_kwargs = "filter_pk"
+    
+    def get_filter_object(self) -> TemplateSavedFilter:
+        pk = self.kwargs.get(self.filter_pk_kwargs)
+        return get_object_or_404(TemplateSavedFilter, pk=pk)
+    
+    def get_initial(self):
+        filter_initial = self.get_filter_object()
+        return super().get_initial() | filter_initial.filters | {TemplateSavedFilter.title.field.name: filter_initial}
+    
+    def form_valid(self, form):
+        data = clean_request_data(form.cleaned_data, self.filter_class)
+        
+        obj = self.get_filter_object()
+        obj.title = form.cleaned_data.get("title")
+        obj.filters = data.get("filters")
+        obj.save()
+        
+        return redirect(self.get_success_url())
 
 
 class TemplateUpdateView(UpdateView, TemplateUpsertViewBase):
