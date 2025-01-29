@@ -33,8 +33,8 @@ from djmoney.money import Money
 from phonenumber_field.modelfields import PhoneNumberField
 from phonenumber_field.phonenumber import PhoneNumber
 
-from flex_report import BaseExportFormat, ReportModel, dynamic_field, export_format
-from flex_report.fields import FieldFileAbsoluteURL
+from  import BaseExportFormat, ReportModel, dynamic_field, export_format
+from .fields import FieldFileAbsoluteURL
 
 from .app_settings import app_settings
 from .constants import (
@@ -356,8 +356,15 @@ def get_annotated_fields(model: Model):
     ) in get_model_manager(model).none().query.annotations.items():
         fields[annotation_name] = annotation_type
         annotation_type.name = annotation_name
+        
+    search_filters = getattr(model, REPORT_FIELDS_KEY, lambda: [])()
+    search_fields = isinstance(search_filters, dict) and search_filters.keys() or search_filters
 
-    return fields
+    return {
+        k: v 
+        for k, v in fields.items()
+        if k in search_fields
+    }
 
 
 def get_field(model, field_name):
@@ -411,7 +418,7 @@ def get_field_lookups(model, field_name):
         return []
 
     if isinstance(
-        search_filters := getattr(model, REPORT_FIELDS_KEY, lambda: [])(), dict
+        search_filters := getattr(model, REPORT_FIELDS_KEY, lambda: [])(), dict,
     ):
         return search_filters.get(field.name, ["exact"])
 

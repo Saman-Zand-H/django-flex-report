@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
+from .utils import get_model_manager
 from django.db import models
 from django.db.models import F
 from django.template.defaultfilters import truncatechars
@@ -281,7 +282,8 @@ class Template(models.Model):
         return self.title
 
     def get_queryset(self):
-        return self.model.model_class()._default_manager.filter(
+        manager = get_model_manager(self.model.model_class())
+        return manager.filter(
             **transform_nulls(self.filters)
         )
 
