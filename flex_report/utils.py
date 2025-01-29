@@ -33,7 +33,7 @@ from djmoney.money import Money
 from phonenumber_field.modelfields import PhoneNumberField
 from phonenumber_field.phonenumber import PhoneNumber
 
-from  import BaseExportFormat, ReportModel, dynamic_field, export_format
+from . import BaseExportFormat, ReportModel, dynamic_field, export_format
 from .fields import FieldFileAbsoluteURL
 
 from .app_settings import app_settings
