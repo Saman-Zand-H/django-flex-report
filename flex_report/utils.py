@@ -361,9 +361,9 @@ def get_annotated_fields(model: Model):
     search_fields = isinstance(search_filters, dict) and search_filters.keys() or search_filters
 
     return {
-        k: v 
-        for k, v in fields.items()
-        if k in search_fields
+        k: fields.get(k)
+        for k in search_filters
+        if k in search_fields and k in fields
     }
 
 
@@ -383,7 +383,7 @@ def get_fields_lookups(model, fields):
     """
     db_fields = {f: field_to_db_field(model, f) for f in fields}
     fields_lookups = {f: get_field_lookups(model, f) for f in db_fields}
-    return OrderedDict(sorted(fields_to_field_name(fields_lookups).items()))
+    return OrderedDict(fields_to_field_name(fields_lookups).items())
 
 
 def get_annotated_fields_lookups(model):
@@ -391,7 +391,8 @@ def get_annotated_fields_lookups(model):
         field_name: get_field_lookups(model, field_name)
         for field_name in get_annotated_fields(model)
     }
-    return OrderedDict(sorted(fields_to_field_name(fields_lookup).items()))
+
+    return OrderedDict(fields_to_field_name(fields_lookup).items())
 
 
 def get_quicksearch_fields_lookups(model, fields):

@@ -3,7 +3,6 @@ import contextlib
 import mimetypes
 from logging import getLogger
 
-from .utils import get_model_manager
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import EmptyPage, Paginator
 from django.http import HttpResponseBadRequest, HttpResponseForbidden
@@ -24,6 +23,7 @@ from .utils import (
     generate_filterset_form,
     get_choice_field_choices,
     get_col_verbose_name,
+    get_model_manager,
     get_template_columns,
     string_to_q,
 )
@@ -213,11 +213,12 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
 
     def setup_filters(self):
         saved_filters = getattr(self.get_saved_filter(), "filters", {})
-        initials = saved_filters | self.get_initials()
+        initials = self.get_initials()
+        initials.pop(self.saved_filter_keyword, None)
         form_classes = self.get_form_classes()
 
         self.template_filters = generate_filterset_from_model(self.report_model, form_classes)(
-            self.template_object.filters or {}
+            (self.template_object.filters | saved_filters) or {}
         )
         self.filters = generate_filterset_from_model(self.report_model, form_classes)(initials)
         self.quicksearch = generate_quicksearch_filterset_from_model(
@@ -258,7 +259,7 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
         )
 
     def validate_filters(self, *filters_list):
-        return all(f.get_filters() and f.data and f.is_valid() for f in filters_list)
+        return any(f.get_filters() and f.data and f.is_valid() for f in filters_list)
 
     def get_saved_filter_form(self):
         return SavedFilterSelectForm(
@@ -351,6 +352,7 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
         return self.get_report_qs()
 
     def get_context_data(self, **kwargs):
+        print(self.have_template)
         if not self.have_template:
             return super(TemplateObjectMixin, self).get_context_data(**kwargs)
 
@@ -360,7 +362,7 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
             "columns_count": len(self.template_columns)
             + self.template_object.buttons.count()
             + sum(
-                len(field.get_dynamic_obj().unpack_field())
+                len(field.get_dynamic_obj().unpack_field(request=self.request))
                 for field in self.template_columns.filter(column_type=FieldTypes.dynamic).only("pk")
             )
             + 1,

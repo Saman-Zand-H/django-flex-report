@@ -62,11 +62,13 @@ class FilterSet(FilterSetBase):
         
         for annotation_name, field_type in get_annotated_fields(model).items():
             annotation_field = get_field(model, annotation_name).output_field
+
             for lookup in get_annotated_fields_lookups(model).get(annotation_name, ["exact"]):
                 field_name = LOOKUP_SEP.join([annotation_name, lookup])
+                verbose_name = field_type.output_field.verbose_name or " ".join(str(DEFAULTS.get("VERBOSE_LOOKUPS", {}).get(field_name_part, field_name_part)) for field_name_part in field_name.split(LOOKUP_SEP)).replace("_", " ").title()
                 defaults = {
                     "field_name": annotation_name,
-                    "label": " ".join(str(DEFAULTS.get("VERBOSE_LOOKUPS", {}).get(field_name_part, field_name_part)) for field_name_part in field_name.split(LOOKUP_SEP)).replace("_", " ").title(),
+                    "label": verbose_name,
                     "lookup_expr": lookup,
                 }
                 filter_class, opts = cls.filter_for_lookup(annotation_field, field_type)
@@ -151,3 +153,4 @@ def generate_filterset_from_model(model, form_classes=None):
         (app_settings.FILTERSET_CLASS,),
         {"Meta": FilterSetMeta(model), "form_classes": form_classes},
     )
+

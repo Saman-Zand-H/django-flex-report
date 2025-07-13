@@ -354,9 +354,6 @@ class GeneralQuerySetExportView(QuerySetExportMixin):
 
 class ReportExportView(QuerySetExportMixin, ReportViewBase):
     def get(self, *args, **kwargs):
-        if not self.template_object.has_export:
-            return Http404("Export is not allowed for this template")
-
         self.export_filename = get_report_filename(self.template_object)
 
         columns = OrderedDict()
