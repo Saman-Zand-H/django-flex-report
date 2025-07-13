@@ -9,6 +9,7 @@ from django.http import HttpResponseBadRequest, HttpResponseForbidden
 from django.shortcuts import HttpResponse
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import View
+
 from flex_report import BaseExportFormat, export_format
 
 from .app_settings import app_settings
@@ -235,7 +236,7 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
         accessed_paths = {
             name: {path: access_handler(self.request).get(name)}
             for name, path in (self.template_object.model_user_path or {}).items()
-            if access_handler(self.request).get(name)
+            if (access := access_handler(self.request)) and access.get(name)
         }
 
         matches_paths = next(iter(accessed_paths.keys()), "__all__")
@@ -317,7 +318,7 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
 
     def get_used_filters(self, cleaned_data):
         return _(" and ").join(
-            f'{k} = {", ".join(map(str, v)) if isinstance(v, list) else v}'
+            f"{k} = {', '.join(map(str, v)) if isinstance(v, list) else v}"
             for k, v in cleaned_data.items()
             if k.lower() != "search"
         )
