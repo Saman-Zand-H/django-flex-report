@@ -1,7 +1,6 @@
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
-from .utils import get_model_manager
 from django.db import models
 from django.db.models import F
 from django.template.defaultfilters import truncatechars
@@ -14,7 +13,7 @@ from flex_report import BaseDynamicField, dynamic_field, report_model
 from .app_settings import app_settings
 from .constants import FieldTypes
 from .managers import ColumnManager
-from .utils import get_column_type, get_view_name_url, is_field_valid, transform_nulls
+from .utils import get_column_type, get_model_manager, get_view_name_url, is_field_valid, transform_nulls
 
 DatetimeField = app_settings.DATETIME_FIELD
 
@@ -186,11 +185,6 @@ class TableButton(models.Model):
     def clean(self):
         if not (self.title or self.icon):
             raise ValidationError({"title": "Title or icon is required."})
-
-        if not (bool(self.event) ^ bool(self.url_name)):
-            raise ValidationError(
-                {"event": "Filling either of Event or URL Name is required."}
-            )
 
     def __str__(self):
         return (
