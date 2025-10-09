@@ -353,7 +353,6 @@ class TablePageMixin(PaginationMixin, TemplateObjectMixin):
         return self.get_report_qs()
 
     def get_context_data(self, **kwargs):
-        print(self.have_template)
         if not self.have_template:
             return super(TemplateObjectMixin, self).get_context_data(**kwargs)
 
